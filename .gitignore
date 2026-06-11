@@ -1,3 +1,4 @@
 AGENTS.md
 *.log
 images/
+.env
