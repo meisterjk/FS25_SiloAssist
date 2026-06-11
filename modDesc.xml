@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<modDesc descVersion="109">
+    <author>mj</author>
+    <version>0.2.0.0</version>
+    <title>
+        <en>Silo Assist</en>
+        <de>Silo Assist</de>
+    </title>
+    <description>
+        <en><![CDATA[
+Automatic bunker silo blade/shovel height control. Drive through or wedge mode. Auto-detects leveler or shovel. Stuck detection raises blade automatically.
+
+Hotkeys: Ctrl+L - Toggle assist | RCtrl+L - Cycle mode (drive-through/wedge) | Ctrl+H - Toggle HUD]]></en>
+        <de><![CDATA[
+Automatische Bunkersilo-Schild/Schaufel-Hoehensteuerung. Durchfahrts- oder Keilsilo-Modus. Erkennt Schild oder Schaufel automatisch. Festfahren-Erkennung hebt das Schild automatisch.
+
+Tastenkombinationen: Strg+L - Assist an/aus | RStrg+L - Modus wechseln (Durchfahrt/Keil) | Strg+H - HUD ein/aus]]></de>
+    </description>
+    <iconFilename>icon_siloAssist.dds</iconFilename>
+    <multiplayer supported="true"/>
+    <extraSourceFiles>
+        <sourceFile filename="scripts/core/siloAssistConfig.lua"/>
+        <sourceFile filename="scripts/core/siloAssistDebug.lua"/>
+        <sourceFile filename="scripts/core/siloAssistVehicleState.lua"/>
+        <sourceFile filename="scripts/core/siloAssistToolDetection.lua"/>
+        <sourceFile filename="scripts/core/siloAssistSiloDetector.lua"/>
+        <sourceFile filename="scripts/controller/siloAssistTiltController.lua"/>
+        <sourceFile filename="scripts/hooks/siloAssistHeightController.lua"/>
+        <sourceFile filename="scripts/hooks/siloAssistDumpController.lua"/>
+        <sourceFile filename="scripts/hud/siloAssistHud.lua"/>
+        <sourceFile filename="scripts/siloAssistMain.lua"/>
+    </extraSourceFiles>
+    <l10n filenamePrefix="translations/translation"/>
+    <actions>
+        <action name="SA_TOGGLE" category="VEHICLE"/>
+        <action name="SA_SETTINGS" category="VEHICLE"/>
+        <action name="SA_HUD_TOGGLE" category="VEHICLE"/>
+    </actions>
+    <inputBinding>
+        <actionBinding action="SA_TOGGLE">
+            <binding device="KB_MOUSE_DEFAULT" input="KEY_l" index="1">
+                <modifier device="KB_MOUSE_DEFAULT" input="KEY_lctrl"/>
+            </binding>
+        </actionBinding>
+        <actionBinding action="SA_SETTINGS">
+            <binding device="KB_MOUSE_DEFAULT" input="KEY_l" index="1">
+                <modifier device="KB_MOUSE_DEFAULT" input="KEY_rctrl"/>
+            </binding>
+        </actionBinding>
+        <actionBinding action="SA_HUD_TOGGLE">
+            <binding device="KB_MOUSE_DEFAULT" input="KEY_h" index="1">
+                <modifier device="KB_MOUSE_DEFAULT" input="KEY_lctrl"/>
+            </binding>
+        </actionBinding>
+    </inputBinding>
+</modDesc>

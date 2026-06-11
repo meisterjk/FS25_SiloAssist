@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<l10n>
+	<translationContributors/>
+	<texts>
+		<!-- Input binding -->
+		<text name="input_SA_TOGGLE" text="Toggle Silo Assist"/>
+		<text name="input_SA_SETTINGS" text="Cycle Silo Assist Mode"/>
+		<text name="input_SA_HUD_TOGGLE" text="Toggle Silo Assist HUD"/>
+
+		<!-- HUD -->
+		<text name="sa_title" text="Silo Assist"/>
+		<text name="sa_statusActive" text="ACTIVE"/>
+		<text name="sa_statusOff" text="OFF"/>
+		<text name="sa_mode" text="Mode"/>
+		<text name="sa_fill" text="Fill"/>
+		<text name="sa_compact" text="Compact"/>
+		<text name="sa_siloState" text="State"/>
+		<text name="sa_siloSize" text="Silo Size"/>
+		<text name="sa_fillH" text="Fill Height"/>
+		<text name="sa_offset" text="Offset"/>
+		<text name="sa_toolHeight" text="Tool H"/>
+		<text name="sa_tool" text="Tool"/>
+		<text name="sa_progress" text="Progress"/>
+		<text name="sa_lateral" text="Lateral"/>
+		<text name="sa_pitch" text="Pitch"/>
+		<text name="sa_speed" text="Speed"/>
+		<text name="sa_state" text="State"/>
+		<text name="sa_dumping" text="DUMPING..."/>
+		<text name="sa_stuck" text="STUCK - Raising"/>
+		<text name="sa_notInSilo" text="Not in silo"/>
+
+		<!-- Mode labels -->
+		<text name="SA_MODE_DRIVETHROUGH" text="Drive-through"/>
+		<text name="SA_MODE_WEDGE" text="Wedge"/>
+
+		<!-- Tool types -->
+		<text name="sa_toolLeveler" text="Leveler"/>
+		<text name="sa_toolLeveler3P" text="Leveler (3-pt)"/>
+		<text name="sa_toolLevelerWL" text="Leveler (Wheel L.)"/>
+		<text name="sa_toolShovel" text="Shovel"/>
+		<text name="sa_toolNone" text="None"/>
+
+		<!-- Status messages -->
+		<text name="sa_noTool" text="No leveler/shovel attached"/>
+	</texts>
+</l10n>

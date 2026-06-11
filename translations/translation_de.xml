@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<l10n>
+	<translationContributors/>
+	<texts>
+		<!-- Input binding -->
+		<text name="input_SA_TOGGLE" text="Silo Assist an/aus"/>
+		<text name="input_SA_SETTINGS" text="Silo Assist Modus wechseln"/>
+		<text name="input_SA_HUD_TOGGLE" text="Silo Assist HUD an/aus"/>
+
+		<!-- HUD -->
+		<text name="sa_title" text="Silo Assist"/>
+		<text name="sa_statusActive" text="AKTIV"/>
+		<text name="sa_statusOff" text="AUS"/>
+		<text name="sa_mode" text="Modus"/>
+		<text name="sa_fill" text="Fuellstand"/>
+		<text name="sa_compact" text="Verdichtung"/>
+		<text name="sa_siloState" text="Silo Status"/>
+		<text name="sa_siloSize" text="Silo Groesse"/>
+		<text name="sa_fillH" text="Fuellhoehe"/>
+		<text name="sa_offset" text="Offset"/>
+		<text name="sa_toolHeight" text="Werkz.H"/>
+		<text name="sa_tool" text="Werkz"/>
+		<text name="sa_progress" text="Pos"/>
+		<text name="sa_lateral" text="Querp"/>
+		<text name="sa_pitch" text="Neigung"/>
+		<text name="sa_speed" text="Geschw"/>
+		<text name="sa_state" text="Status"/>
+		<text name="sa_dumping" text="AUSKIPPEN..."/>
+		<text name="sa_stuck" text="FESTGEFAHREN - Hebe"/>
+		<text name="sa_notInSilo" text="Nicht im Silo"/>
+
+		<!-- Mode labels -->
+		<text name="SA_MODE_DRIVETHROUGH" text="Durchfahrtssilo"/>
+		<text name="SA_MODE_WEDGE" text="Keilsilo"/>
+
+		<!-- Tool types -->
+		<text name="sa_toolLeveler" text="Schild"/>
+		<text name="sa_toolLeveler3P" text="Schild (3-Punkt)"/>
+		<text name="sa_toolLevelerWL" text="Schild (Radlader)"/>
+		<text name="sa_toolShovel" text="Schaufel"/>
+		<text name="sa_toolNone" text="Keins"/>
+
+		<!-- Status messages -->
+		<text name="sa_noTool" text="Kein Schild/Schaufel angebracht"/>
+	</texts>
+</l10n>
