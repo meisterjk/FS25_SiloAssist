@@ -31,6 +31,12 @@ siloAssistConfig.ALPHA_STEP = 0.04
 siloAssistConfig.HEIGHT_THRESHOLD = 0.04
 siloAssistConfig.HEIGHT_DEADBAND = 0.05
 
+-- Surface sampling / follow factor
+siloAssistConfig.FOLLOW_FACTOR = 0.5
+siloAssistConfig.FOLLOW_STEP = 0.1
+siloAssistConfig.FOLLOW_MIN = 0.0
+siloAssistConfig.FOLLOW_MAX = 1.0
+
 -- Auto-tilt: 4° per meter of fill height (compensates for vehicle sinking)
 siloAssistConfig.AUTO_TILT_FACTOR = 4
 
@@ -108,6 +114,16 @@ function siloAssistConfig.adjustOffset(delta)
         siloAssistConfig.OFFSET_MAX)
     siloAssistVehicleState.setHeightOffset(newOffset)
     return newOffset
+end
+
+function siloAssistConfig.adjustFollow(delta)
+    local currentFollow = siloAssistVehicleState.getFollowFactor()
+    local newFollow = math.clamp(
+        currentFollow + delta,
+        siloAssistConfig.FOLLOW_MIN,
+        siloAssistConfig.FOLLOW_MAX)
+    siloAssistVehicleState.setFollowFactor(math.floor(newFollow * 10 + 0.5) / 10)
+    return siloAssistVehicleState.getFollowFactor()
 end
 
 function siloAssistConfig.adjustTilt(delta)

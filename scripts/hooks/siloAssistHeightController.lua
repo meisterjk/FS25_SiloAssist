@@ -36,6 +36,10 @@ siloAssistHeightController.vehiclePitchDeg = 0
 siloAssistHeightController.lastEffectiveRampStart = 0
 siloAssistHeightController.lastEffectiveRampEnd = 0
 
+-- Surface sampling
+siloAssistHeightController.surfaceSamples = {}  -- {x,y,z} world positions for debug viz
+siloAssistHeightController.lastSurfaceTarget = nil
+
 ---------------------------------------------------------------------
 -- Reset
 ---------------------------------------------------------------------
@@ -52,6 +56,8 @@ function siloAssistHeightController.reset()
     siloAssistHeightController.vehiclePitchDeg = 0
     siloAssistHeightController.lastEffectiveRampStart = 0
     siloAssistHeightController.lastEffectiveRampEnd = 0
+    siloAssistHeightController.surfaceSamples = {}
+    siloAssistHeightController.lastSurfaceTarget = nil
 end
 
 ---------------------------------------------------------------------
@@ -303,6 +309,69 @@ function siloAssistHeightController.updateWedgePass(progress)
 end
 
 ---------------------------------------------------------------------
+-- Surface-aware sampling: measure actual silage height ahead of blade
+---------------------------------------------------------------------
+function siloAssistHeightController.sampleSurfaceAhead(vehicle)
+    local bladeNode = siloAssistToolDetection.bladeNode
+    if bladeNode == nil or vehicle == nil then
+        return nil
+    end
+
+    local bx, by, bz = getWorldTranslation(bladeNode)
+
+    -- Vehicle forward direction (local Z in world space)
+    local vx, vy, vz = getWorldTranslation(vehicle.rootNode)
+    local vzx, vzy, vzz = localToWorld(vehicle.rootNode, 0, 0, 1)
+    local fdx = vzx - vx
+    local fdy = vzy - vy
+    local fdz = vzz - vz
+    local fLen = MathUtil.vector3Length(fdx, fdy, fdz)
+    if fLen < 0.001 then
+        return nil
+    end
+    fdx = fdx / fLen
+    fdy = fdy / fLen
+    fdz = fdz / fLen
+
+    local pushDir = siloAssistToolDetection.isFrontAttached and 1 or -1
+
+    local distances = {0, 0.5, 1.0, 2.0, 5.0}
+    local weights = {0.10, 0.25, 0.30, 0.20, 0.15}
+
+    local totalHeight = 0
+    local totalWeight = 0
+    siloAssistHeightController.surfaceSamples = {}
+
+    local area = siloAssistSiloDetector.currentSiloArea
+
+    for i, d in ipairs(distances) do
+        local sx = bx + fdx * pushDir * d
+        local sz = bz + fdz * pushDir * d
+        table.insert(siloAssistHeightController.surfaceSamples, {sx, by, sz})
+
+        local fillH
+        if area ~= nil and not MathUtil.isPointInParallelogram(sx, sz, area.sx, area.sz,
+                area.dwx or (area.wx - area.sx), area.dwz or (area.wz - area.sz),
+                area.dhx or (area.hx - area.sx), area.dhz or (area.hz - area.sz)) then
+            fillH = siloAssistSiloDetector.stagedFillHeight
+        else
+            local terrH, densH = DensityMapHeightUtil.getHeightAtWorldPos(sx, by, sz)
+            fillH = math.max((densH or terrH) - terrH, 0)
+        end
+
+        totalHeight = totalHeight + fillH * weights[i]
+        totalWeight = totalWeight + weights[i]
+    end
+
+    if totalWeight <= 0 then
+        return nil
+    end
+    local result = totalHeight / totalWeight
+    siloAssistHeightController.lastSurfaceTarget = result
+    return result
+end
+
+---------------------------------------------------------------------
 -- Height application: AttacherJointControl (3-point)
 ---------------------------------------------------------------------
 function siloAssistHeightController.applyAttacherJointControl(vehicle, toolObject, heightDiff, dt)
@@ -503,6 +572,18 @@ function siloAssistHeightController.update(vehicle, silo, progress, fillHeight, 
 
     if siloAssistVehicleState.getSiloMode() == "wedge" then
         siloAssistHeightController.updateWedgePass(progress)
+    end
+
+    local followFactor = siloAssistVehicleState.getFollowFactor()
+    if followFactor > 0 then
+        local surfaceTarget = siloAssistHeightController.sampleSurfaceAhead(vehicle)
+        if surfaceTarget ~= nil then
+            fillHeight = fillHeight * (1 - followFactor) + surfaceTarget * followFactor
+            siloAssistDebug.logThrottled("Height", "surface", string.format(
+                "follow=%.1f surfaceTarget=%.3f blended=%.3f",
+                followFactor, surfaceTarget, fillHeight
+            ))
+        end
     end
 
     local targetAboveGround = siloAssistHeightController.calculateTargetHeight(progress, fillHeight)

@@ -20,6 +20,7 @@
 		<text name="sa_offset" text="Height"/>
 		<text name="sa_height" text="Height"/>
 		<text name="sa_tilt" text="Tilt"/>
+		<text name="sa_follow" text="Follow"/>
 		<text name="sa_toolHeight" text="Tool H"/>
 		<text name="sa_tool" text="Tool"/>
 		<text name="sa_progress" text="Progress"/>

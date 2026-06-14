@@ -16,6 +16,7 @@ siloAssistVehicleState.xmlSchema:register(XMLValueType.STRING, "siloAssistVehicl
 siloAssistVehicleState.xmlSchema:register(XMLValueType.STRING, "siloAssistVehicles.vehicle(?)#siloMode", "driveThrough")
 siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#heightOffset", 0.0)
 siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#tiltOffset", 0)
+siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#followFactor", 0.5)
 siloAssistVehicleState.xmlSchema:register(XMLValueType.BOOL, "siloAssistVehicles.vehicle(?)#hudVisible", false)
 
 ---------------------------------------------------------------------
@@ -44,6 +45,7 @@ function siloAssistVehicleState.createDefaultState()
         siloMode = siloAssistConfig.DEFAULT_SILO_MODE,
         heightOffset = siloAssistConfig.DEFAULT_HEIGHT_OFFSET,
         tiltOffset = siloAssistConfig.DEFAULT_TILT_OFFSET,
+        followFactor = siloAssistConfig.FOLLOW_FACTOR,
     }
 end
 
@@ -166,6 +168,23 @@ function siloAssistVehicleState.getTiltOffset()
     return siloAssistConfig.DEFAULT_TILT_OFFSET
 end
 
+function siloAssistVehicleState.getFollowFactor()
+    if siloAssistVehicleState.currentState ~= nil then
+        return siloAssistVehicleState.currentState.followFactor
+    end
+    return siloAssistConfig.FOLLOW_FACTOR
+end
+
+function siloAssistVehicleState.setFollowFactor(factor)
+    if siloAssistVehicleState.currentState ~= nil then
+        siloAssistVehicleState.currentState.followFactor = math.clamp(
+            factor,
+            siloAssistConfig.FOLLOW_MIN,
+            siloAssistConfig.FOLLOW_MAX
+        )
+    end
+end
+
 function siloAssistVehicleState.setTiltOffset(offset)
     if siloAssistVehicleState.currentState ~= nil then
         siloAssistVehicleState.currentState.tiltOffset = math.clamp(
@@ -225,6 +244,7 @@ function siloAssistVehicleState.saveToXML()
         xmlFile:setString(vKey .. "#siloMode", state.siloMode or siloAssistConfig.DEFAULT_SILO_MODE)
         xmlFile:setFloat(vKey .. "#heightOffset", state.heightOffset or siloAssistConfig.DEFAULT_HEIGHT_OFFSET)
         xmlFile:setFloat(vKey .. "#tiltOffset", state.tiltOffset or siloAssistConfig.DEFAULT_TILT_OFFSET)
+        xmlFile:setFloat(vKey .. "#followFactor", state.followFactor or siloAssistConfig.FOLLOW_FACTOR)
         xmlFile:setBool(vKey .. "#hudVisible", state.hudVisible or false)
         i = i + 1
     end
@@ -265,6 +285,7 @@ function siloAssistVehicleState.loadFromXML()
         local siloMode = xmlFile:getString(vKey .. "#siloMode") or siloAssistConfig.DEFAULT_SILO_MODE
         local heightOffset = xmlFile:getFloat(vKey .. "#heightOffset") or siloAssistConfig.DEFAULT_HEIGHT_OFFSET
         local tiltOffset = xmlFile:getFloat(vKey .. "#tiltOffset") or siloAssistConfig.DEFAULT_TILT_OFFSET
+        local followFactor = xmlFile:getFloat(vKey .. "#followFactor") or siloAssistConfig.FOLLOW_FACTOR
         local hudVisible = xmlFile:getBool(vKey .. "#hudVisible") or false
 
         if configFile ~= "" then
@@ -275,6 +296,7 @@ function siloAssistVehicleState.loadFromXML()
             state.siloMode = siloMode
             state.heightOffset = heightOffset
             state.tiltOffset = tiltOffset
+            state.followFactor = followFactor
             state.hudVisible = hudVisible
             state.state = siloAssistConfig.STATE_OFF
             siloAssistVehicleState.vehicleStates[normalizedKey] = state

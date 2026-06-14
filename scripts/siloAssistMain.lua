@@ -337,6 +337,10 @@ end
 -- Draw
 ---------------------------------------------------------------------
 function siloAssist:draw()
+    if siloAssistDebug.enabled and siloAssistVehicleState.getState() ~= siloAssistConfig.STATE_OFF then
+        siloAssistHud:drawSurfaceSamples()
+    end
+
     new2DLayer()
     siloAssistHud:draw()
 end

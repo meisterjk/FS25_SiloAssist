@@ -47,6 +47,7 @@ siloAssistHud.CHECK_PX = 12
 siloAssistHud.NAV_BTN_PX = 12
 siloAssistHud.OFFSET_BTN_PX = 12
 siloAssistHud.TILT_BTN_PX = 12
+siloAssistHud.FOLLOW_BTN_PX = 12
 siloAssistHud.SWITCH_W_PX = 24
 siloAssistHud.SWITCH_H_PX = 12
 
@@ -61,6 +62,8 @@ siloAssistHud.plusOv = nil
 siloAssistHud.minusOv = nil
 siloAssistHud.tiltPlusOv = nil
 siloAssistHud.tiltMinusOv = nil
+siloAssistHud.followPlusOv = nil
+siloAssistHud.followMinusOv = nil
 siloAssistHud.checkOvUnchecked = nil
 siloAssistHud.checkOvChecked = nil
 siloAssistHud.switchOffOv = nil
@@ -96,6 +99,8 @@ siloAssistHud._minusBtn = nil
 siloAssistHud._plusBtn = nil
 siloAssistHud._tiltMinusBtn = nil
 siloAssistHud._tiltPlusBtn = nil
+siloAssistHud._followMinusBtn = nil
+siloAssistHud._followPlusBtn = nil
 siloAssistHud._toggleBtn = nil
 
 ---------------------------------------------------------------------
@@ -137,6 +142,8 @@ function siloAssistHud:init()
     siloAssistHud.minusOv = makeOv(P .. ".iconMinus")
     siloAssistHud.tiltPlusOv = makeOv(P .. ".iconPlus")
     siloAssistHud.tiltMinusOv = makeOv(P .. ".iconMinus")
+    siloAssistHud.followPlusOv = makeOv(P .. ".iconPlus")
+    siloAssistHud.followMinusOv = makeOv(P .. ".iconMinus")
     siloAssistHud.checkOvUnchecked = makeOv(P .. ".checkboxUnchecked")
     siloAssistHud.checkOvChecked = makeOv(P .. ".checkboxChecked")
     siloAssistHud.switchOffOv = makeOv(P .. ".switchOff")
@@ -194,6 +201,8 @@ function siloAssistHud:draw()
     siloAssistHud._plusBtn = nil
     siloAssistHud._tiltMinusBtn = nil
     siloAssistHud._tiltPlusBtn = nil
+    siloAssistHud._followMinusBtn = nil
+    siloAssistHud._followPlusBtn = nil
     siloAssistHud._toggleBtn = nil
 
     local w, _ = getNormalizedScreenValues(siloAssistHud.WIDTH, 1)
@@ -207,6 +216,7 @@ function siloAssistHud:draw()
     local navBtnW, navBtnH = getNormalizedScreenValues(siloAssistHud.NAV_BTN_PX, siloAssistHud.NAV_BTN_PX)
     local offBtnW, offBtnH = getNormalizedScreenValues(siloAssistHud.OFFSET_BTN_PX, siloAssistHud.OFFSET_BTN_PX)
     local tiltBtnW, tiltBtnH = getNormalizedScreenValues(siloAssistHud.TILT_BTN_PX, siloAssistHud.TILT_BTN_PX)
+    local followBtnW, followBtnH = getNormalizedScreenValues(siloAssistHud.FOLLOW_BTN_PX, siloAssistHud.FOLLOW_BTN_PX)
     local switchW, switchH = getNormalizedScreenValues(siloAssistHud.SWITCH_W_PX, siloAssistHud.SWITCH_H_PX)
 
     local uiScale = g_gameSettings:getValue("uiScale") or 1.0
@@ -457,6 +467,50 @@ function siloAssistHud:draw()
             setTextAlignment(RenderText.ALIGN_LEFT)
             renderText(valX, textY, fDefault, tiltStr)
 
+        elseif line.type == "follow" then
+            local labelStr = line.text
+            setTextColor(1, 1, 1, 0.9)
+            setTextAlignment(RenderText.ALIGN_LEFT)
+            renderText(x + m, textY, fDefault, labelStr)
+
+            local followVal = siloAssistVehicleState.getFollowFactor()
+            local followStr = string.format("%.1f", followVal)
+            local followTextW = getTextWidth(fDefault, followStr)
+
+            local plusX = x + w - m - followBtnW
+            local valX = plusX - m - followTextW
+            local minusX = valX - m - followBtnW
+
+            siloAssistHud._followMinusBtn = {x = minusX, y = rowY, w = followBtnW, h = lH}
+            siloAssistHud._followPlusBtn = {x = plusX, y = rowY, w = followBtnW, h = lH}
+
+            local hovMinus = siloAssistHud.mouseX >= minusX
+                and siloAssistHud.mouseX <= minusX + followBtnW
+                and siloAssistHud.mouseY >= rowY
+                and siloAssistHud.mouseY <= rowY + lH
+            local hovPlus = siloAssistHud.mouseX >= plusX
+                and siloAssistHud.mouseX <= plusX + followBtnW
+                and siloAssistHud.mouseY >= rowY
+                and siloAssistHud.mouseY <= rowY + lH
+
+            local colMinus = hovMinus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
+            local colPlus = hovPlus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
+
+            local btnY = rowY + siloAssistHud:centerY(lH, followBtnH)
+            siloAssistHud.followMinusOv:setPosition(minusX, btnY)
+            siloAssistHud.followMinusOv:setDimension(followBtnW, followBtnH)
+            siloAssistHud.followMinusOv:setColor(unpack(colMinus))
+            siloAssistHud.followMinusOv:render()
+
+            siloAssistHud.followPlusOv:setPosition(plusX, btnY)
+            siloAssistHud.followPlusOv:setDimension(followBtnW, followBtnH)
+            siloAssistHud.followPlusOv:setColor(unpack(colPlus))
+            siloAssistHud.followPlusOv:render()
+
+            setTextColor(1, 1, 1, 0.9)
+            setTextAlignment(RenderText.ALIGN_LEFT)
+            renderText(valX, textY, fDefault, followStr)
+
         elseif line.type == "valuePair" then
             if line.color then
                 setTextColor(unpack(line.color))
@@ -551,6 +605,7 @@ function siloAssistHud.buildSetupPage(lines)
     table.insert(lines, { type = "checkboxes" })
     table.insert(lines, { type = "offset", text = g_i18n:getText("sa_height") .. ":" })
     table.insert(lines, { type = "tilt", text = g_i18n:getText("sa_tilt") .. ":" })
+    table.insert(lines, { type = "follow", text = g_i18n:getText("sa_follow") .. ":" })
 
     -- Fill level (always shown)
     if inSilo then
@@ -786,6 +841,16 @@ function siloAssistHud:mouseEvent(posX, posY, isDown, isUp, button)
             return true
         end
 
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._followMinusBtn) then
+            siloAssistConfig.adjustFollow(-siloAssistConfig.FOLLOW_STEP)
+            return true
+        end
+
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._followPlusBtn) then
+            siloAssistConfig.adjustFollow(siloAssistConfig.FOLLOW_STEP)
+            return true
+        end
+
         -- Drag from header (but not on buttons)
         if siloAssistHud.hudPosX ~= nil and siloAssistHud.hudWidth ~= nil then
             local _, hH = getNormalizedScreenValues(1, siloAssistHud.HEADER_H)
@@ -831,6 +896,44 @@ function siloAssistHud:clampPosition()
     if w > 0 and h > 0 then
         siloAssistHud.x = math.clamp(siloAssistHud.x, 0, 1 - w)
         siloAssistHud.y = math.clamp(siloAssistHud.y, 0, 1 - h)
+    end
+end
+
+---------------------------------------------------------------------
+-- Draw 3D surface sample markers (debug mode only)
+---------------------------------------------------------------------
+function siloAssistHud:drawSurfaceSamples()
+    local samples = siloAssistHeightController.surfaceSamples
+    if samples == nil or #samples == 0 then
+        return
+    end
+
+    -- First pass: compute world-space surface points
+    local surfacePoints = {}
+    local prevSurfaceX, prevSurfaceY, prevSurfaceZ
+    for i, pos in ipairs(samples) do
+        local sx, sy, sz = pos[1], pos[2], pos[3]
+        local terrH, densH = DensityMapHeightUtil.getHeightAtWorldPos(sx, sy, sz)
+        local fillH = math.max((densH or terrH) - terrH, 0)
+        local surfaceY = terrH + fillH
+
+        table.insert(surfacePoints, {sx, surfaceY, sz})
+
+        -- Connecting line to previous point
+        if prevSurfaceX ~= nil then
+            drawLine(prevSurfaceX, prevSurfaceY, prevSurfaceZ, sx, surfaceY, sz, 0, 1, 0, 0.6)
+        end
+        prevSurfaceX, prevSurfaceY, prevSurfaceZ = sx, surfaceY, sz
+
+        -- Horizontal cross: + marker at sample position on surface
+        local crossSize = 0.3
+        drawLine(sx - crossSize, surfaceY, sz, sx + crossSize, surfaceY, sz, 0, 1, 0, 1)
+        drawLine(sx, surfaceY, sz - crossSize, sx, surfaceY, sz + crossSize, 0, 1, 0, 1)
+
+        -- Vertical line from sample point down to fill surface
+        if fillH > 0.05 then
+            drawLine(sx, sy, sz, sx, surfaceY, sz, 0, 0.5, 0, 0.5)
+        end
     end
 end
 
