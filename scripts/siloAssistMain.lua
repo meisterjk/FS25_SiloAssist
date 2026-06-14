@@ -232,6 +232,19 @@ function siloAssist:update(dt)
 
     siloAssistSiloDetector.update(vehicle, dt)
 
+    -- Tilt control: always active when assist is on and tool detected.
+    -- This ensures user-adjusted tiltOffset takes effect immediately,
+    -- even outside the silo or while reversing.
+    if siloAssistToolDetection.controlType ~= nil then
+        -- Compute vehicle pitch for tilt controller (height controller also
+        -- computes this, but tilt may run before height in some code paths)
+        local vx, vy, vz = getWorldTranslation(vehicle.rootNode)
+        local zx, zy, zz = localToWorld(vehicle.rootNode, 0, 0, 1)
+        local vehiclePitch, _ = MathUtil.directionToPitchYaw(zx - vx, zy - vy, zz - vz)
+        siloAssistHeightController.vehiclePitchDeg = math.deg(vehiclePitch)
+        siloAssistTiltController.update(vehicle)
+    end
+
     local justLeftSilo = siloAssistState.wasInSilo and not siloAssistSiloDetector.isInSilo
 
     if siloAssistState.isReversing and siloAssistToolDetection.toolType ~= "shovel" then
@@ -255,11 +268,7 @@ function siloAssist:update(dt)
         -- Pre-positioning: near silo but not yet in it
         local isNear, _, distToEdge = siloAssistSiloDetector.isNearSilo(vehicle, siloAssistConfig.PRE_ENTRY_DISTANCE)
         if isNear and siloAssistToolDetection.controlType ~= nil then
-            local speed = vehicle:getLastSpeed()
-            if speed >= siloAssistConfig.MIN_SPEED_FOR_CONTROL then
-                siloAssistHeightController.applyPreEntry(vehicle, distToEdge)
-                siloAssistTiltController.update(vehicle)
-            end
+            siloAssistHeightController.applyPreEntry(vehicle, distToEdge)
         end
 
         if state == siloAssistConfig.STATE_WAITING then
@@ -308,10 +317,9 @@ function siloAssist:update(dt)
 
     if speed >= siloAssistConfig.MIN_SPEED_FOR_CONTROL then
         siloAssistHeightController.update(vehicle, silo, progress, fillHeight, dt)
-        siloAssistTiltController.update(vehicle)
     else
         siloAssistDebug.logThrottled("Main", "slow", string.format(
-            "Speed %.1f < MIN_SPEED %.1f: skipping height+tilt control",
+            "Speed %.1f < MIN_SPEED %.1f: skipping height control",
             speed, siloAssistConfig.MIN_SPEED_FOR_CONTROL
         ))
     end

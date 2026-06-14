@@ -17,7 +17,9 @@
 		<text name="sa_siloState" text="Silo Status"/>
 		<text name="sa_siloSize" text="Silo Groesse"/>
 		<text name="sa_fillH" text="Fuellhoehe"/>
-		<text name="sa_offset" text="Offset"/>
+		<text name="sa_offset" text="Höhe"/>
+		<text name="sa_height" text="Höhe"/>
+		<text name="sa_tilt" text="Neigung"/>
 		<text name="sa_toolHeight" text="Werkz.H"/>
 		<text name="sa_tool" text="Werkz"/>
 		<text name="sa_progress" text="Pos"/>

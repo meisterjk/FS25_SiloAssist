@@ -46,6 +46,7 @@ siloAssistHud.CLOSE_PX = 12
 siloAssistHud.CHECK_PX = 12
 siloAssistHud.NAV_BTN_PX = 12
 siloAssistHud.OFFSET_BTN_PX = 12
+siloAssistHud.TILT_BTN_PX = 12
 siloAssistHud.SWITCH_W_PX = 24
 siloAssistHud.SWITCH_H_PX = 12
 
@@ -58,6 +59,8 @@ siloAssistHud.prevOv = nil
 siloAssistHud.nextOv = nil
 siloAssistHud.plusOv = nil
 siloAssistHud.minusOv = nil
+siloAssistHud.tiltPlusOv = nil
+siloAssistHud.tiltMinusOv = nil
 siloAssistHud.checkOvUnchecked = nil
 siloAssistHud.checkOvChecked = nil
 siloAssistHud.switchOffOv = nil
@@ -91,6 +94,8 @@ siloAssistHud._modeDtBtn = nil
 siloAssistHud._modeWedgeBtn = nil
 siloAssistHud._minusBtn = nil
 siloAssistHud._plusBtn = nil
+siloAssistHud._tiltMinusBtn = nil
+siloAssistHud._tiltPlusBtn = nil
 siloAssistHud._toggleBtn = nil
 
 ---------------------------------------------------------------------
@@ -130,6 +135,8 @@ function siloAssistHud:init()
     siloAssistHud.nextOv = makeOv(P .. ".next")
     siloAssistHud.plusOv = makeOv(P .. ".iconPlus")
     siloAssistHud.minusOv = makeOv(P .. ".iconMinus")
+    siloAssistHud.tiltPlusOv = makeOv(P .. ".iconPlus")
+    siloAssistHud.tiltMinusOv = makeOv(P .. ".iconMinus")
     siloAssistHud.checkOvUnchecked = makeOv(P .. ".checkboxUnchecked")
     siloAssistHud.checkOvChecked = makeOv(P .. ".checkboxChecked")
     siloAssistHud.switchOffOv = makeOv(P .. ".switchOff")
@@ -185,6 +192,8 @@ function siloAssistHud:draw()
     siloAssistHud._modeWedgeBtn = nil
     siloAssistHud._minusBtn = nil
     siloAssistHud._plusBtn = nil
+    siloAssistHud._tiltMinusBtn = nil
+    siloAssistHud._tiltPlusBtn = nil
     siloAssistHud._toggleBtn = nil
 
     local w, _ = getNormalizedScreenValues(siloAssistHud.WIDTH, 1)
@@ -197,6 +206,7 @@ function siloAssistHud:draw()
     local checkW, checkH = getNormalizedScreenValues(siloAssistHud.CHECK_PX, siloAssistHud.CHECK_PX)
     local navBtnW, navBtnH = getNormalizedScreenValues(siloAssistHud.NAV_BTN_PX, siloAssistHud.NAV_BTN_PX)
     local offBtnW, offBtnH = getNormalizedScreenValues(siloAssistHud.OFFSET_BTN_PX, siloAssistHud.OFFSET_BTN_PX)
+    local tiltBtnW, tiltBtnH = getNormalizedScreenValues(siloAssistHud.TILT_BTN_PX, siloAssistHud.TILT_BTN_PX)
     local switchW, switchH = getNormalizedScreenValues(siloAssistHud.SWITCH_W_PX, siloAssistHud.SWITCH_H_PX)
 
     local uiScale = g_gameSettings:getValue("uiScale") or 1.0
@@ -403,6 +413,50 @@ function siloAssistHud:draw()
             setTextAlignment(RenderText.ALIGN_LEFT)
             renderText(valX, textY, fDefault, offsetStr)
 
+        elseif line.type == "tilt" then
+            local labelStr = line.text
+            setTextColor(1, 1, 1, 0.9)
+            setTextAlignment(RenderText.ALIGN_LEFT)
+            renderText(x + m, textY, fDefault, labelStr)
+
+            local tiltSign = siloAssistVehicleState.getTiltOffset() >= 0 and "+" or ""
+            local tiltStr = string.format("%s%d°", tiltSign, math.floor(siloAssistVehicleState.getTiltOffset() + 0.5))
+            local tiltTextW = getTextWidth(fDefault, tiltStr)
+
+            local plusX = x + w - m - tiltBtnW
+            local valX = plusX - m - tiltTextW
+            local minusX = valX - m - tiltBtnW
+
+            siloAssistHud._tiltMinusBtn = {x = minusX, y = rowY, w = tiltBtnW, h = lH}
+            siloAssistHud._tiltPlusBtn = {x = plusX, y = rowY, w = tiltBtnW, h = lH}
+
+            local hovMinus = siloAssistHud.mouseX >= minusX
+                and siloAssistHud.mouseX <= minusX + tiltBtnW
+                and siloAssistHud.mouseY >= rowY
+                and siloAssistHud.mouseY <= rowY + lH
+            local hovPlus = siloAssistHud.mouseX >= plusX
+                and siloAssistHud.mouseX <= plusX + tiltBtnW
+                and siloAssistHud.mouseY >= rowY
+                and siloAssistHud.mouseY <= rowY + lH
+
+            local colMinus = hovMinus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
+            local colPlus = hovPlus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
+
+            local btnY = rowY + siloAssistHud:centerY(lH, tiltBtnH)
+            siloAssistHud.tiltMinusOv:setPosition(minusX, btnY)
+            siloAssistHud.tiltMinusOv:setDimension(tiltBtnW, tiltBtnH)
+            siloAssistHud.tiltMinusOv:setColor(unpack(colMinus))
+            siloAssistHud.tiltMinusOv:render()
+
+            siloAssistHud.tiltPlusOv:setPosition(plusX, btnY)
+            siloAssistHud.tiltPlusOv:setDimension(tiltBtnW, tiltBtnH)
+            siloAssistHud.tiltPlusOv:setColor(unpack(colPlus))
+            siloAssistHud.tiltPlusOv:render()
+
+            setTextColor(1, 1, 1, 0.9)
+            setTextAlignment(RenderText.ALIGN_LEFT)
+            renderText(valX, textY, fDefault, tiltStr)
+
         elseif line.type == "valuePair" then
             if line.color then
                 setTextColor(unpack(line.color))
@@ -495,7 +549,8 @@ function siloAssistHud.buildSetupPage(lines)
     local inSilo = siloAssistSiloDetector.isInSilo and siloAssistSiloDetector.currentSilo ~= nil
 
     table.insert(lines, { type = "checkboxes" })
-    table.insert(lines, { type = "offset", text = g_i18n:getText("sa_offset") .. ":" })
+    table.insert(lines, { type = "offset", text = g_i18n:getText("sa_height") .. ":" })
+    table.insert(lines, { type = "tilt", text = g_i18n:getText("sa_tilt") .. ":" })
 
     -- Fill level (always shown)
     if inSilo then
@@ -718,6 +773,16 @@ function siloAssistHud:mouseEvent(posX, posY, isDown, isUp, button)
 
         if siloAssistHud:isInButton(posX, posY, siloAssistHud._plusBtn) then
             siloAssistConfig.adjustOffset(siloAssistConfig.OFFSET_STEP)
+            return true
+        end
+
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._tiltMinusBtn) then
+            siloAssistConfig.adjustTilt(-siloAssistConfig.TILT_STEP)
+            return true
+        end
+
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._tiltPlusBtn) then
+            siloAssistConfig.adjustTilt(siloAssistConfig.TILT_STEP)
             return true
         end
 

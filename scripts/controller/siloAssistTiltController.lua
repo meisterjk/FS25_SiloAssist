@@ -10,6 +10,8 @@ siloAssistTiltController = {}
 
 siloAssistTiltController.lastAppliedTiltDeg = 0
 siloAssistTiltController.lastToolPitchDeg = nil
+siloAssistTiltController.cachedAutoTilt = 0
+siloAssistTiltController.lastStagedFillHeight = -1
 
 ---------------------------------------------------------------------
 -- Reset
@@ -17,17 +19,36 @@ siloAssistTiltController.lastToolPitchDeg = nil
 function siloAssistTiltController.reset()
     siloAssistTiltController.lastAppliedTiltDeg = 0
     siloAssistTiltController.lastToolPitchDeg = nil
+    siloAssistTiltController.cachedAutoTilt = 0
+    siloAssistTiltController.lastStagedFillHeight = -1
 end
 
 ---------------------------------------------------------------------
--- Update: called every frame when assist is active and in silo
+-- Update: called every frame when assist is active
 ---------------------------------------------------------------------
 function siloAssistTiltController.update(vehicle)
     local config = siloAssistConfig
     local vehiclePitchDeg = siloAssistHeightController.vehiclePitchDeg or 0
     local pitchFactor = siloAssistToolDetection.isFrontAttached and -1 or 1
-    local targetTiltDeg = config.SHIELD_TILT_DEG + vehiclePitchDeg * pitchFactor
-    targetTiltDeg = math.clamp(targetTiltDeg, config.SHIELD_TILT_MIN, config.SHIELD_TILT_MAX)
+
+    local currentStagedFill = siloAssistSiloDetector.stagedFillHeight or 0
+    if math.abs(currentStagedFill - siloAssistTiltController.lastStagedFillHeight) > 0.001 then
+        siloAssistTiltController.cachedAutoTilt = currentStagedFill * config.AUTO_TILT_FACTOR
+        siloAssistTiltController.lastStagedFillHeight = currentStagedFill
+        siloAssistDebug.log("Tilt", string.format(
+            "autoTilt recalc: stagedFill=%.3f autoTilt=%.1f",
+            currentStagedFill, siloAssistTiltController.cachedAutoTilt
+        ))
+    end
+
+    local targetTiltDeg
+    if siloAssistState.isReversing and siloAssistToolDetection.toolType ~= "shovel" then
+        targetTiltDeg = 0
+    else
+        targetTiltDeg = config.SHIELD_TILT_DEG + siloAssistVehicleState.getTiltOffset()
+            + siloAssistTiltController.cachedAutoTilt + vehiclePitchDeg * pitchFactor
+    end
+    targetTiltDeg = math.clamp(targetTiltDeg, config.TILT_MIN, config.TILT_MAX)
 
     local hysteresis = config.SHIELD_TILT_HYSTERESIS_DEG
     local lastTilt = siloAssistTiltController.lastAppliedTiltDeg
@@ -166,7 +187,7 @@ end
 -- Full retract tilt: blade tilted maximally backward (for deactivate)
 ---------------------------------------------------------------------
 function siloAssistTiltController.fullRetractTilt()
-    local targetDeg = siloAssistConfig.SHIELD_TILT_MAX
+    local targetDeg = siloAssistConfig.TILT_MAX
     siloAssistDebug.log("Tilt", "fullRetractTilt: target=" .. tostring(targetDeg) .. " ctrl=" .. tostring(siloAssistToolDetection.controlType))
     siloAssistTiltController.lastAppliedTiltDeg = targetDeg
 

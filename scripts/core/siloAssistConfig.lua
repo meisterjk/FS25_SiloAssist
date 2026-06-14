@@ -1,6 +1,6 @@
 siloAssistConfig = {}
 
-siloAssistConfig.VERSION = "0.3.0"
+siloAssistConfig.VERSION = "0.3.1"
 
 -- Debug
 siloAssistConfig.DEBUG = false
@@ -19,8 +19,11 @@ siloAssistConfig.RAMP_END_PCT = 0.85
 siloAssistConfig.RAMP_MIN_START_PCT = 0.05
 siloAssistConfig.RAMP_MAX_END_PCT = 0.95
 
+-- Auto-offset: 10cm per meter of fill height (compensates for vehicle sinking)
+siloAssistConfig.AUTO_FILL_OFFSET_FACTOR = 0.10
+
 -- Height control (default HEIGHT_OFFSET, overridden per-vehicle)
-siloAssistConfig.DEFAULT_HEIGHT_OFFSET = 0.05
+siloAssistConfig.DEFAULT_HEIGHT_OFFSET = 0.0
 siloAssistConfig.OFFSET_MIN = -0.5
 siloAssistConfig.OFFSET_MAX = 1.0
 siloAssistConfig.OFFSET_STEP = 0.10
@@ -28,12 +31,17 @@ siloAssistConfig.ALPHA_STEP = 0.04
 siloAssistConfig.HEIGHT_THRESHOLD = 0.04
 siloAssistConfig.HEIGHT_DEADBAND = 0.05
 
--- Tilt control
-siloAssistConfig.SHIELD_TILT_DEG = 5
+-- Auto-tilt: 4° per meter of fill height (compensates for vehicle sinking)
+siloAssistConfig.AUTO_TILT_FACTOR = 4
+
+-- Tilt control (default TILT_OFFSET, overridden per-vehicle)
+siloAssistConfig.DEFAULT_TILT_OFFSET = 0
+siloAssistConfig.TILT_STEP = 1
+siloAssistConfig.TILT_MIN = -10
+siloAssistConfig.TILT_MAX = 20
+siloAssistConfig.SHIELD_TILT_DEG = 0
 siloAssistConfig.SHIELD_TILT_PITCH_FACTOR = -1
 siloAssistConfig.SHIELD_TILT_HYSTERESIS_DEG = 1
-siloAssistConfig.SHIELD_TILT_MIN = -5
-siloAssistConfig.SHIELD_TILT_MAX = 15
 
 -- Vehicle behavior
 siloAssistConfig.REVERSE_RAISE_SPEED = 3.0
@@ -51,7 +59,7 @@ siloAssistConfig.WEDGE_INCREMENT = 0.02
 siloAssistConfig.WEDGE_HEIGHT_M = 0.3
 
 -- Pre-positioning
-siloAssistConfig.PRE_ENTRY_DISTANCE = 2.0
+siloAssistConfig.PRE_ENTRY_DISTANCE = 6.0
 
 -- Shovel/dump mode
 siloAssistConfig.DUMP_HEIGHT_OFFSET = 1.5
@@ -100,4 +108,14 @@ function siloAssistConfig.adjustOffset(delta)
         siloAssistConfig.OFFSET_MAX)
     siloAssistVehicleState.setHeightOffset(newOffset)
     return newOffset
+end
+
+function siloAssistConfig.adjustTilt(delta)
+    local currentTilt = siloAssistVehicleState.getTiltOffset()
+    local newTilt = math.clamp(
+        currentTilt + delta,
+        siloAssistConfig.TILT_MIN,
+        siloAssistConfig.TILT_MAX)
+    siloAssistVehicleState.setTiltOffset(newTilt)
+    return newTilt
 end

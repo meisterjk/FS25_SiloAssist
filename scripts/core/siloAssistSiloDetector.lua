@@ -164,6 +164,31 @@ end
 ---------------------------------------------------------------------
 -- Near-silo check
 ---------------------------------------------------------------------
+
+---------------------------------------------------------------------
+-- Distance from point to nearest edge of silo rectangle.
+-- Returns 0 if inside the rectangle, positive distance if outside.
+---------------------------------------------------------------------
+function siloAssistSiloDetector.distToSiloEdge(px, pz, area, dhx, dhz, dwx, dwz)
+    local dx = px - area.sx
+    local dz = pz - area.sz
+    local lenSq = dhx * dhx + dhz * dhz
+    local widSq = dwx * dwx + dwz * dwz
+
+    if lenSq < 0.001 or widSq < 0.001 then
+        return 999
+    end
+
+    local projH = math.clamp((dx * dhx + dz * dhz) / lenSq, 0, 1)
+    local projW = math.clamp((dx * dwx + dz * dwz) / widSq, 0, 1)
+
+    local nearX = area.sx + projH * dhx + projW * dwx
+    local nearZ = area.sz + projH * dhz + projW * dwz
+
+    local distSq = (px - nearX) * (px - nearX) + (pz - nearZ) * (pz - nearZ)
+    return math.sqrt(distSq)
+end
+
 function siloAssistSiloDetector.isNearSilo(vehicle, distance)
     if g_currentMission == nil then
         return false, nil, 999
@@ -182,13 +207,9 @@ function siloAssistSiloDetector.isNearSilo(vehicle, distance)
             if silo ~= nil then
                 local area = siloAssistSiloDetector.getSiloArea(silo)
                 if area ~= nil then
-                    local dhx, dhz, dwx, dwz, length, width = getSiloAreaVectors(area)
+                    local dhx, dhz, dwx, dwz = getSiloAreaVectors(area)
                     if dhx ~= nil then
-                        local cx = area.sx + dhx * 0.5 + dwx * 0.5
-                        local cz = area.sz + dhz * 0.5 + dwz * 0.5
-                        local siloDist = MathUtil.vector2Length(vx - cx, vz - cz)
-                        local halfDiag = math.max(length, width) * 0.5
-                        local distToEdge = siloDist - halfDiag
+                        local distToEdge = siloAssistSiloDetector.distToSiloEdge(vx, vz, area, dhx, dhz, dwx, dwz)
 
                         if distToEdge < distance then
                             return true, silo, distToEdge

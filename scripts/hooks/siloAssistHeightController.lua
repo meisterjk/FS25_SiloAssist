@@ -238,8 +238,10 @@ end
 function siloAssistHeightController.calcDriveThroughTarget(progress, fillHeight)
     local config = siloAssistConfig
     local heightOffset = siloAssistVehicleState.getHeightOffset()
-    local middleHeight = fillHeight + heightOffset
-    local groundOffset = heightOffset
+    local autoOffset = fillHeight * config.AUTO_FILL_OFFSET_FACTOR
+    local effectiveOffset = heightOffset + autoOffset
+    local middleHeight = fillHeight + effectiveOffset
+    local groundOffset = effectiveOffset
 
     local fillRatio = math.clamp(fillHeight / config.SILO_MAX_HEIGHT_M, 0, 1)
 
@@ -417,7 +419,9 @@ function siloAssistHeightController.applyCylinderedControl(vehicle, heightDiff, 
 end
 
 ---------------------------------------------------------------------
--- Pre-positioning (1-2m before silo entry)
+-- Pre-positioning (before silo entry)
+-- Lowers the blade to near-operating height as the vehicle approaches.
+-- Uses ease-in curve: slow at first, then faster as we get closer.
 ---------------------------------------------------------------------
 function siloAssistHeightController.applyPreEntry(vehicle, distanceToSilo)
     local config = siloAssistConfig
@@ -425,7 +429,10 @@ function siloAssistHeightController.applyPreEntry(vehicle, distanceToSilo)
         return
     end
 
-    local progress = distanceToSilo / config.PRE_ENTRY_DISTANCE
+    -- progress: 1.0 = far away (PRE_ENTRY_DISTANCE), 0.0 = at silo edge
+    -- ease-in: fast drop when close, gentle when far
+    local rawProgress = distanceToSilo / config.PRE_ENTRY_DISTANCE
+    local progress = rawProgress * rawProgress
 
     if siloAssistToolDetection.controlType == "attacherJointControl" then
         local toolObject = siloAssistToolDetection.toolObject
@@ -433,17 +440,20 @@ function siloAssistHeightController.applyPreEntry(vehicle, distanceToSilo)
             local spec = toolObject.spec_attacherJointControl
             local jointDesc = spec.jointDesc
             if jointDesc ~= nil then
-                local targetAlpha = jointDesc.lowerAlpha * progress
-                spec.heightTargetAlpha = math.clamp(targetAlpha, jointDesc.upperAlpha, jointDesc.lowerAlpha)
+                local loweredAlpha = jointDesc.lowerAlpha
+                local raisedAlpha = jointDesc.upperAlpha
+                -- progress=1 (far): raised. progress=0 (at silo): lowered.
+                local targetAlpha = raisedAlpha + (loweredAlpha - raisedAlpha) * (1.0 - progress)
+                spec.heightTargetAlpha = math.clamp(targetAlpha, raisedAlpha, loweredAlpha)
             end
         end
     elseif siloAssistToolDetection.controlType == "cylindered" then
         if siloAssistToolDetection.armToolIndex ~= nil then
             local cylVehicle = siloAssistToolDetection.cylinderedVehicle or vehicle
-            if progress > 0.1 then
-                Cylindered.actionEventInput(cylVehicle, "", progress, siloAssistToolDetection.armToolIndex, true)
-            else
-                Cylindered.actionEventInput(cylVehicle, "", 0, siloAssistToolDetection.armToolIndex, true)
+            -- progress=1 (far): 0 (raised). progress=0 (at silo): 1 (lowered).
+            local targetInput = (1.0 - progress)
+            if targetInput > 0.05 then
+                Cylindered.actionEventInput(cylVehicle, "", targetInput, siloAssistToolDetection.armToolIndex, true)
             end
         end
     end
@@ -469,7 +479,6 @@ function siloAssistHeightController.raiseBlade(vehicle)
             Cylindered.actionEventInput(cylVehicle, "", -0.8, siloAssistToolDetection.armToolIndex, true)
         end
     end
-    siloAssistTiltController.resetTilt()
     siloAssistHeightController.lastAlphaDirection = -1
 end
 
