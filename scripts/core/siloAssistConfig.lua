@@ -1,6 +1,6 @@
 siloAssistConfig = {}
 
-siloAssistConfig.VERSION = "0.2.0"
+siloAssistConfig.VERSION = "0.3.0"
 
 -- Debug
 siloAssistConfig.DEBUG = false

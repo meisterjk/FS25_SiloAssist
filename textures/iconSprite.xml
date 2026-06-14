@@ -1,0 +1,42 @@
+<texture>
+    <meta>
+        <filename>siloAssistAtlas.dds</filename>
+        <size width="512" height="512" />
+    </meta>
+    <slices>
+        <!-- Existing elements -->
+        <slice id="panel" uvs="0px 0px 512px 64px"/>
+        <slice id="play" uvs="4px 68px 56px 56px"/>
+        <slice id="stop" uvs="68px 68px 56px 56px"/>
+        <slice id="close" uvs="132px 68px 56px 56px"/>
+        <slice id="pause" uvs="196px 68px 56px 56px"/>
+        <slice id="config" uvs="260px 68px 56px 56px"/>
+        <slice id="fuelIcon" uvs="4px 128px 28px 28px"/>
+        <slice id="wrenchIcon" uvs="36px 128px 28px 28px"/>
+        <slice id="wheelIcon" uvs="68px 128px 28px 28px"/>
+        <slice id="titleBar" uvs="0px 160px 512px 40px"/>
+        <slice id="bottomBar" uvs="0px 204px 512px 32px"/>
+        <slice id="prev" uvs="4px 240px 40px 40px"/>
+        <slice id="next" uvs="52px 240px 40px 40px"/>
+
+        <!-- Checkbox -->
+        <slice id="checkboxUnchecked" uvs="0px 332px 24px 24px"/>
+        <slice id="checkboxChecked" uvs="28px 332px 24px 24px"/>
+
+        <!-- Select arrows (white chevron on transparent, overlay on 9-slice button) -->
+        <slice id="selectArrowDown" uvs="0px 364px 24px 24px"/>
+        <slice id="selectArrowUp" uvs="28px 364px 24px 24px"/>
+
+        <!-- Switch -->
+        <slice id="switchOff" uvs="0px 396px 48px 24px"/>
+        <slice id="switchOn" uvs="52px 396px 48px 24px"/>
+
+        <!-- IconButton -->
+        <slice id="iconPlus" uvs="0px 428px 24px 24px"/>
+        <slice id="iconMinus" uvs="28px 428px 24px 24px"/>
+
+        <!-- Divider -->
+        <slice id="dividerHorizontal" uvs="0px 460px 256px 4px"/>
+        <slice id="dividerVertical" uvs="0px 468px 4px 44px"/>
+    </slices>
+</texture>

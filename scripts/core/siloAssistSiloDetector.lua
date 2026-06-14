@@ -166,12 +166,12 @@ end
 ---------------------------------------------------------------------
 function siloAssistSiloDetector.isNearSilo(vehicle, distance)
     if g_currentMission == nil then
-        return false, nil
+        return false, nil, 999
     end
 
     local silos = g_currentMission.placeableSystem:getBunkerSilos()
     if silos == nil then
-        return false, nil
+        return false, nil, 999
     end
 
     local vx, _, vz = getWorldTranslation(vehicle.rootNode)
@@ -188,9 +188,10 @@ function siloAssistSiloDetector.isNearSilo(vehicle, distance)
                         local cz = area.sz + dhz * 0.5 + dwz * 0.5
                         local siloDist = MathUtil.vector2Length(vx - cx, vz - cz)
                         local halfDiag = math.max(length, width) * 0.5
+                        local distToEdge = siloDist - halfDiag
 
-                        if siloDist - halfDiag < distance then
-                            return true, silo
+                        if distToEdge < distance then
+                            return true, silo, distToEdge
                         end
                     end
                 end
@@ -198,7 +199,7 @@ function siloAssistSiloDetector.isNearSilo(vehicle, distance)
         end
     end
 
-    return false, nil
+    return false, nil, 999
 end
 
 ---------------------------------------------------------------------

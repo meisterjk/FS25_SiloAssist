@@ -28,6 +28,8 @@
 		<text name="sa_dumping" text="DUMPING..."/>
 		<text name="sa_stuck" text="STUCK - Raising"/>
 		<text name="sa_notInSilo" text="Not in silo"/>
+		<text name="sa_debugTab" text="Debug"/>
+		<text name="sa_debugInactive" text="Debug inactive"/>
 
 		<!-- Mode labels -->
 		<text name="SA_MODE_DRIVETHROUGH" text="Drive-through"/>

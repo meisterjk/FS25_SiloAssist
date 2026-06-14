@@ -31,6 +31,7 @@ siloAssist.SCRIPT_FILES = {
     "scripts/hooks/siloAssistHeightController.lua",
     "scripts/hooks/siloAssistDumpController.lua",
     "scripts/hud/siloAssistHud.lua",
+    "scripts/hud/siloAssistModPanel.lua",
 }
 
 ---------------------------------------------------------------------
@@ -49,6 +50,9 @@ function siloAssist:loadMap()
     siloAssistVehicleState.loadFromXML()
 
     FSBaseMission.saveSavegame = Utils.appendedFunction(FSBaseMission.saveSavegame, siloAssist.onSaveGame)
+
+    print("[SiloAssist] loadMap: calling siloAssistModPanel.register()")
+    siloAssistModPanel.register()
 end
 
 function siloAssist:deleteMap()
@@ -59,6 +63,8 @@ function siloAssist:deleteMap()
     removeConsoleCommand("reloadSiloAssist")
     removeConsoleCommand("siloAssistDebug")
     siloAssistVehicleState.resetAll()
+
+    siloAssistModPanel.deleteMap()
 end
 
 ---------------------------------------------------------------------
@@ -186,8 +192,10 @@ function siloAssist:update(dt)
     local state = siloAssistVehicleState.getState()
 
     if state == siloAssistConfig.STATE_OFF then
-        if siloAssistVehicleState.isHudVisible() and vehicle ~= nil then
+        if vehicle ~= nil then
             siloAssistSiloDetector.update(vehicle, dt)
+        end
+        if siloAssistVehicleState.isHudVisible() and vehicle ~= nil then
             siloAssistHud:updateStatusText(dt)
         end
         return
@@ -244,6 +252,16 @@ function siloAssist:update(dt)
             end
         end
 
+        -- Pre-positioning: near silo but not yet in it
+        local isNear, _, distToEdge = siloAssistSiloDetector.isNearSilo(vehicle, siloAssistConfig.PRE_ENTRY_DISTANCE)
+        if isNear and siloAssistToolDetection.controlType ~= nil then
+            local speed = vehicle:getLastSpeed()
+            if speed >= siloAssistConfig.MIN_SPEED_FOR_CONTROL then
+                siloAssistHeightController.applyPreEntry(vehicle, distToEdge)
+                siloAssistTiltController.update(vehicle)
+            end
+        end
+
         if state == siloAssistConfig.STATE_WAITING then
             siloAssistHud:updateStatusText(dt)
             siloAssistState.wasInSilo = false
@@ -252,7 +270,6 @@ function siloAssist:update(dt)
 
         if state ~= siloAssistConfig.STATE_OFF then
             siloAssistVehicleState.setState(siloAssistConfig.STATE_WAITING)
-            siloAssistHud.showStatusText(g_i18n:getText("sa_notInSilo"))
         end
         siloAssistDebug.logThrottled("Main", "notInSilo", "Not in silo, waiting...")
         siloAssistHud:updateStatusText(dt)
@@ -304,6 +321,8 @@ function siloAssist:update(dt)
     end
 
     siloAssistHud:updateStatusText(dt)
+
+    siloAssistModPanel.update()
 end
 
 ---------------------------------------------------------------------
@@ -363,6 +382,11 @@ function siloAssist:activate()
 end
 
 function siloAssist:deactivate()
+    local vehicle = g_localPlayer:getCurrentVehicle()
+    if vehicle ~= nil and siloAssistToolDetection.controlType ~= nil then
+        siloAssistHeightController.raiseBlade(vehicle)
+        siloAssistTiltController.fullRetractTilt()
+    end
     siloAssistVehicleState.setState(siloAssistConfig.STATE_OFF)
     siloAssistHeightController.reset()
     siloAssistTiltController.reset()

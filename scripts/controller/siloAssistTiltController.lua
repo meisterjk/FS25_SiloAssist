@@ -161,3 +161,18 @@ function siloAssistTiltController.resetTilt()
         end
     end
 end
+
+---------------------------------------------------------------------
+-- Full retract tilt: blade tilted maximally backward (for deactivate)
+---------------------------------------------------------------------
+function siloAssistTiltController.fullRetractTilt()
+    local targetDeg = siloAssistConfig.SHIELD_TILT_MAX
+    siloAssistDebug.log("Tilt", "fullRetractTilt: target=" .. tostring(targetDeg) .. " ctrl=" .. tostring(siloAssistToolDetection.controlType))
+    siloAssistTiltController.lastAppliedTiltDeg = targetDeg
+
+    if siloAssistToolDetection.controlType == "attacherJointControl" then
+        siloAssistTiltController.applyTilt3Point(siloAssistToolDetection.toolObject, targetDeg)
+    elseif siloAssistToolDetection.controlType == "cylindered" then
+        siloAssistTiltController.applyTiltCylindered(targetDeg)
+    end
+end

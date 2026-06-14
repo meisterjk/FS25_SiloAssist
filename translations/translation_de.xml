@@ -28,6 +28,8 @@
 		<text name="sa_dumping" text="AUSKIPPEN..."/>
 		<text name="sa_stuck" text="FESTGEFAHREN - Hebe"/>
 		<text name="sa_notInSilo" text="Nicht im Silo"/>
+		<text name="sa_debugTab" text="Debug"/>
+		<text name="sa_debugInactive" text="Debug inaktiv"/>
 
 		<!-- Mode labels -->
 		<text name="SA_MODE_DRIVETHROUGH" text="Durchfahrtssilo"/>
