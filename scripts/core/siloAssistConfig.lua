@@ -19,6 +19,7 @@ siloAssistConfig.EXIT_RAMP_METERS = 8.0
 
 -- Exit ramp: raise blade + tilt backward to empty material before leaving silo
 siloAssistConfig.EXIT_RAMP_HEIGHT_ADD = 0.3
+siloAssistConfig.EXIT_RAMP_HEIGHT_FILL_FACTOR = 0.5
 siloAssistConfig.EXIT_RAMP_TILT_MAX_DEG = 20
 
 -- Minimum absolute height above fill (always at least 20cm above fill)

@@ -285,6 +285,13 @@ function siloAssist:update(dt)
 
     local shouldRaiseBlade = (siloAssistToolDetection.isFrontAttached == siloAssistState.isReversing)
     if shouldRaiseBlade and siloAssistToolDetection.toolType ~= "shovel" then
+        if siloAssistHeightController.exitRampActive then
+            siloAssistHeightController.exitRampActive = false
+            siloAssistHeightController.exitRampProgress = 0
+        end
+        if siloAssistTiltController.forceTiltActive then
+            siloAssistTiltController.clearForceTilt()
+        end
         local justShouldRaise = siloAssistToolDetection.isFrontAttached and justStartedReversing or justStoppedReversing
         if justShouldRaise then
             siloAssistDebug.log("Main", "shouldRaiseBlade -> raiseBlade (isFront=" .. tostring(siloAssistToolDetection.isFrontAttached) .. " rev=" .. tostring(siloAssistState.isReversing) .. ")")

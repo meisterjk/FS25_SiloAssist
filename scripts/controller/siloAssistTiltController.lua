@@ -52,6 +52,20 @@ function siloAssistTiltController.clearForceTilt()
 end
 
 function siloAssistTiltController.update(vehicle, dt)
+    -- Reversing blade: always reset tilt to 0 regardless of forceTilt
+    local shouldRaiseTilt = (siloAssistToolDetection.isFrontAttached == siloAssistState.isReversing)
+    if shouldRaiseTilt and siloAssistToolDetection.toolType ~= "shovel" then
+        siloAssistTiltController.saturationTilt = 0
+        siloAssistTiltController.clearForceTilt()
+        siloAssistTiltController.lastAppliedTiltDeg = 0
+        if siloAssistToolDetection.controlType == "attacherJointControl" then
+            siloAssistTiltController.applyTilt3Point(siloAssistToolDetection.toolObject, 0)
+        elseif siloAssistToolDetection.controlType == "cylindered" then
+            siloAssistTiltController.applyTiltCylindered(0)
+        end
+        return
+    end
+
     -- Force tilt active: re-apply every frame and skip normal logic
     if siloAssistTiltController.forceTiltActive then
         local deg = siloAssistTiltController.forceTiltDeg
@@ -99,16 +113,8 @@ function siloAssistTiltController.update(vehicle, dt)
         tostring(isSaturated), heightDiff
     ))
 
-    local targetTiltDeg
-    local shouldRaiseTilt = (siloAssistToolDetection.isFrontAttached == siloAssistState.isReversing)
-    if shouldRaiseTilt and siloAssistToolDetection.toolType ~= "shovel" then
-        targetTiltDeg = 0
-        siloAssistTiltController.saturationTilt = 0
-        siloAssistTiltController.clearForceTilt()
-    else
-        targetTiltDeg = config.SHIELD_TILT_DEG + siloAssistVehicleState.getTiltOffset()
-            + autoTilt + vehiclePitchDeg * pitchFactor + siloAssistTiltController.saturationTilt
-    end
+    local targetTiltDeg = config.SHIELD_TILT_DEG + siloAssistVehicleState.getTiltOffset()
+        + autoTilt + vehiclePitchDeg * pitchFactor + siloAssistTiltController.saturationTilt
     targetTiltDeg = math.clamp(targetTiltDeg, config.TILT_MIN, config.TILT_MAX)
 
     local hysteresis = config.SHIELD_TILT_HYSTERESIS_DEG

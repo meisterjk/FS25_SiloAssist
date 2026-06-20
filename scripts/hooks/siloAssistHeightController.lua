@@ -346,7 +346,7 @@ function siloAssistHeightController.calcDriveThroughTarget(progress, fillHeight)
         result = groundOffset + (middleHeight - groundOffset) * rampProgress
     elseif progress > rampEnd then
         local rampUp = (progress - rampEnd) / (1.0 - rampEnd)
-        local exitHeight = middleHeight + config.EXIT_RAMP_HEIGHT_ADD
+        local exitHeight = middleHeight + config.EXIT_RAMP_HEIGHT_ADD + fillHeight * config.EXIT_RAMP_HEIGHT_FILL_FACTOR
         result = middleHeight + (exitHeight - middleHeight) * rampUp
     else
         result = middleHeight
@@ -385,7 +385,7 @@ function siloAssistHeightController.calcWedgeTarget(progress, fillHeight)
 
     if progress > rampEnd then
         local rampUp = (progress - rampEnd) / (1.0 - rampEnd)
-        local exitHeight = wedgeTarget + config.EXIT_RAMP_HEIGHT_ADD
+        local exitHeight = wedgeTarget + config.EXIT_RAMP_HEIGHT_ADD + fillHeight * config.EXIT_RAMP_HEIGHT_FILL_FACTOR
         wedgeTarget = wedgeTarget + (exitHeight - wedgeTarget) * rampUp
     end
 
