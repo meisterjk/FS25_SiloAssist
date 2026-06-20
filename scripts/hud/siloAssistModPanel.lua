@@ -137,7 +137,7 @@ function siloAssistModPanel.register()
         text = "Debug", row = 4, col = 1, colSpan = 2,
         active = false,
         onChange = function(active)
-            siloAssistDebug.enabled = active
+            siloAssistDebug.showDebug = active
             siloAssistModPanel.updateDebugVisibility()
         end,
     })
@@ -255,7 +255,7 @@ function siloAssistModPanel.updateDebugVisibility()
     end
     local TAB = siloAssistModPanel.TAB_ID
     local PD = siloAssistModPanel.PAGE_DEBUG
-    local debugOn = siloAssistDebug.enabled
+    local debugOn = siloAssistDebug.showDebug
 
     local debugWidgetIds = {
         "debugStateLabel", "debugStateValue",
@@ -377,10 +377,10 @@ function siloAssistModPanel.update()
     end
 
     if W.debugToggle ~= nil then
-        ModPanel.setWidgetActive(TAB, PSET, "debugToggle", siloAssistDebug.enabled)
+        ModPanel.setWidgetActive(TAB, PSET, "debugToggle", siloAssistDebug.showDebug)
     end
 
-    if siloAssistDebug.enabled then
+    if siloAssistDebug.showDebug then
         siloAssistModPanel.updateDebugData()
     end
 end
@@ -405,9 +405,8 @@ function siloAssistModPanel.updateDebugData()
         ModPanel.setWidgetText(TAB, PD, "dbgOffsetValue", offsetStr)
     end
 
-    local rampStr = string.format("%.2f->%.2f | %.2f->%.2f",
-        siloAssistConfig.RAMP_START_PCT, siloAssistConfig.RAMP_MIN_START_PCT,
-        siloAssistConfig.RAMP_END_PCT, siloAssistConfig.RAMP_MAX_END_PCT)
+    local rampStr = string.format("Einf:%.1fm Ausf:%.1fm",
+        siloAssistConfig.ENTRY_RAMP_METERS, siloAssistConfig.EXIT_RAMP_METERS)
     if W.dbgRampValue ~= nil then
         ModPanel.setWidgetText(TAB, PD, "dbgRampValue", rampStr)
     end
@@ -428,9 +427,8 @@ function siloAssistModPanel.updateDebugData()
         ModPanel.setWidgetText(TAB, PD, "dbgPitchValue", pitchStr)
     end
 
-    local stuckStr = string.format("%s | Slip: %s | Rev: %s",
+    local stuckStr = string.format("%s | Rev: %s",
         tostring(siloAssistState.isStuck),
-        tostring(siloAssistState.wheelSlipDetected),
         tostring(siloAssistState.isReversing))
     if W.dbgStuckValue ~= nil then
         ModPanel.setWidgetText(TAB, PD, "dbgStuckValue", stuckStr)

@@ -283,16 +283,17 @@ function siloAssistSiloDetector.update(vehicle, dt)
     siloAssistSiloDetector.siloEstimatedCapacity = siloAssistSiloDetector.estimateCapacity(silo)
     siloAssistSiloDetector.estimatedFillHeight = siloAssistSiloDetector.getEstimatedFillHeight()
 
-    local terrainHeight, densityHeight = DensityMapHeightUtil.getHeightAtWorldPos(vx, vy, vz)
-    siloAssistSiloDetector.siloTerrainHeightAtVehicle = terrainHeight
-    siloAssistSiloDetector.siloDensityHeightAtVehicle = densityHeight or terrainHeight
-    siloAssistSiloDetector.densityFillHeightAtVehicle = math.max(densityHeight - terrainHeight, 0)
+    local surfaceAtVeh, rawFillAtVeh = DensityMapHeightUtil.getHeightAtWorldPos(vx, vy, vz)
+    local fillAtVeh = math.max(rawFillAtVeh or 0, 0)
+    siloAssistSiloDetector.siloTerrainHeightAtVehicle = surfaceAtVeh - fillAtVeh
+    siloAssistSiloDetector.siloDensityHeightAtVehicle = surfaceAtVeh
+    siloAssistSiloDetector.densityFillHeightAtVehicle = fillAtVeh
 
     local bladeNode = siloAssistToolDetection.bladeNode
     if bladeNode ~= nil then
         local bx, by, bz = getWorldTranslation(bladeNode)
-        local bTerrainH, bDensityH = DensityMapHeightUtil.getHeightAtWorldPos(bx, by, bz)
-        siloAssistSiloDetector.densityFillHeightAtBlade = math.max(bDensityH - bTerrainH, 0)
+        local surfaceAtBlade, fillAtBlade = DensityMapHeightUtil.getHeightAtWorldPos(bx, by, bz)
+        siloAssistSiloDetector.densityFillHeightAtBlade = math.max(fillAtBlade or 0, 0)
     else
         siloAssistSiloDetector.densityFillHeightAtBlade = 0
     end
@@ -434,6 +435,19 @@ function siloAssistSiloDetector.estimateCapacity(silo)
     end
 
     local maxH = siloAssistConfig.SILO_MAX_HEIGHT_M
+
+    -- If we have fillLevel and a measured fillHeight, calculate actual density
+    -- and use it for a more accurate capacity estimate.
+    local fillLevel = silo.fillLevel or 0
+    local fillHeight = siloAssistSiloDetector.stagedFillHeight
+        or siloAssistSiloDetector.smoothedFillHeight or 0
+    if fillLevel > 0 and fillHeight > 0.5 and length > 0 and width > 0 then
+        local measuredDensity = fillLevel / (length * width * fillHeight)
+        local estimatedLiters = length * width * maxH * measuredDensity
+        return math.max(estimatedLiters, 1)
+    end
+
+    -- Fallback: fixed density estimate (0.7 fill factor * 1000 L/m3)
     local estimatedLiters = length * width * maxH * 0.7 * 1000
     return math.max(estimatedLiters, 1)
 end
@@ -452,8 +466,81 @@ end
 
 function siloAssistSiloDetector.getFillHeightAtPosition(vehicle, silo)
     local vx, vy, vz = getWorldTranslation(vehicle.rootNode)
-    local terrainHeight, densityHeight = DensityMapHeightUtil.getHeightAtWorldPos(vx, vy, vz)
-    return math.max(densityHeight - terrainHeight, 0)
+    local _, fillAboveTerrain = DensityMapHeightUtil.getHeightAtWorldPos(vx, vy, vz)
+    return math.max(fillAboveTerrain or 0, 0)
+end
+
+---------------------------------------------------------------------
+-- Prefetch silo data from a world position (entry detection)
+-- Fills currentSilo and all silo fields before the vehicle enters.
+---------------------------------------------------------------------
+function siloAssistSiloDetector.prefetchSiloData(worldX, worldY, worldZ)
+    if g_currentMission == nil then return end
+
+    -- Priorität 1: Falls das Fahrzeug bereits in einem Silo steht, dieses beibehalten.
+    -- Der LR-Messpunkt dient nur als Vorab-Erkennung, wenn das Fahrzeug noch in keinem
+    -- Silo ist. Verhindert Umschalten auf ein Nachbarsilo, wenn der Messpunkt dorthin ragt.
+    local vehicle = g_localPlayer and g_localPlayer:getCurrentVehicle() or nil
+    if vehicle ~= nil then
+        local currentSilo = siloAssistSiloDetector.findSiloForVehicle(vehicle)
+        if currentSilo ~= nil then
+            -- Fahrzeug ist in einem Silo → dieses Silo nutzen, nicht das vom Messpunkt
+            siloAssistDebug.logThrottled("Silo", "prefetch", "vehicle already in silo, ignoring LR point")
+            return
+        end
+    end
+
+    -- Priorität 2: LR-Messpunkt-basierte Erkennung (Fallback)
+    local silos = g_currentMission.placeableSystem:getBunkerSilos()
+    if silos == nil then return end
+
+    for _, placeable in ipairs(silos) do
+        if placeable.spec_bunkerSilo ~= nil then
+            local silo = placeable.spec_bunkerSilo.bunkerSilo
+            if silo ~= nil then
+                local area = siloAssistSiloDetector.getSiloArea(silo)
+                if area ~= nil then
+                    local dhx, dhz, dwx, dwz, length, width = getSiloAreaVectors(area)
+                    if dhx ~= nil and MathUtil.isPointInParallelogram(worldX, worldZ, area.sx, area.sz, dwx, dwz, dhx, dhz) then
+                        siloAssistSiloDetector.currentSilo = silo
+                        siloAssistSiloDetector.currentSiloArea = area
+                        siloAssistSiloDetector.siloLength = length or 0
+                        siloAssistSiloDetector.siloWidth = width or 0
+                        siloAssistSiloDetector.siloFillLevel = silo.fillLevel or 0
+                        siloAssistSiloDetector.siloCompactedPercent = silo.compactedPercent or 0
+                        siloAssistSiloDetector.siloState = silo.state or 0
+                        siloAssistSiloDetector.siloFillType = silo.inputFillType or 0
+                        siloAssistSiloDetector.siloEstimatedCapacity = siloAssistSiloDetector.estimateCapacity(silo)
+                        siloAssistSiloDetector.estimatedFillHeight = siloAssistSiloDetector.getEstimatedFillHeight()
+                        siloAssistSiloDetector.isInSilo = false
+                        siloAssistSiloDetector.progress = 0
+
+                        -- TopoMap: initialize grid + coarse scan once on silo entry
+                        if siloAssistTopoMap ~= nil then
+                            siloAssistTopoMap.init(silo, area, siloAssistConfig.TOPO_MAP_CELL_SIZE)
+                            siloAssistTopoMap.sampleCoarseGrid(siloAssistConfig.TOPO_MAP_COARSE_STEP)
+                            siloAssistTopoMap.computeStats()
+                            -- Compute initial target topography based on current mode
+                            local mode = siloAssistVehicleState.getSiloMode()
+                            local offset = siloAssistVehicleState.getHeightOffset()
+                            local opts = { offset = offset }
+                            if mode == "wedge" then
+                                opts.wedgeHeight = siloAssistConfig.WEDGE_HEIGHT_M
+                            end
+                            siloAssistTopoMap.computeTargetTopography(mode, opts)
+                        end
+
+                        siloAssistDebug.log("Silo", string.format(
+                            "prefetchSiloData: silo found, fillLvl=%d len=%.1f wid=%.1f state=%s",
+                            silo.fillLevel or 0, length or 0, width or 0,
+                            siloAssistSiloDetector.getSiloStateName(silo.state or 0)))
+                        return
+                    end
+                end
+            end
+        end
+    end
+    siloAssistDebug.logThrottled("Silo", "prefetch", "prefetchSiloData: no matching silo found")
 end
 
 function siloAssistSiloDetector.getFillHeightAtBladePosition(bladeNode)
@@ -461,6 +548,6 @@ function siloAssistSiloDetector.getFillHeightAtBladePosition(bladeNode)
         return 0
     end
     local bx, by, bz = getWorldTranslation(bladeNode)
-    local terrainHeight, densityHeight = DensityMapHeightUtil.getHeightAtWorldPos(bx, by, bz)
-    return math.max(densityHeight - terrainHeight, 0)
+    local _, fillAboveTerrain = DensityMapHeightUtil.getHeightAtWorldPos(bx, by, bz)
+    return math.max(fillAboveTerrain or 0, 0)
 end

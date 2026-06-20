@@ -17,6 +17,8 @@ siloAssistVehicleState.xmlSchema:register(XMLValueType.STRING, "siloAssistVehicl
 siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#heightOffset", 0.0)
 siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#tiltOffset", 0)
 siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#followFactor", 0.5)
+siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#lookaheadTime", 1.5)
+siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#topoGain", 0.0)
 siloAssistVehicleState.xmlSchema:register(XMLValueType.BOOL, "siloAssistVehicles.vehicle(?)#hudVisible", false)
 
 ---------------------------------------------------------------------
@@ -46,6 +48,8 @@ function siloAssistVehicleState.createDefaultState()
         heightOffset = siloAssistConfig.DEFAULT_HEIGHT_OFFSET,
         tiltOffset = siloAssistConfig.DEFAULT_TILT_OFFSET,
         followFactor = siloAssistConfig.FOLLOW_FACTOR,
+        lookaheadTime = siloAssistConfig.LOOKAHEAD_TIME,
+        topoGain = siloAssistConfig.TOPO_MAP_CORRECTION_GAIN,
     }
 end
 
@@ -185,6 +189,23 @@ function siloAssistVehicleState.setFollowFactor(factor)
     end
 end
 
+function siloAssistVehicleState.getLookaheadTime()
+    if siloAssistVehicleState.currentState ~= nil then
+        return siloAssistVehicleState.currentState.lookaheadTime
+    end
+    return siloAssistConfig.LOOKAHEAD_TIME
+end
+
+function siloAssistVehicleState.setLookaheadTime(time)
+    if siloAssistVehicleState.currentState ~= nil then
+        siloAssistVehicleState.currentState.lookaheadTime = math.clamp(
+            time,
+            siloAssistConfig.LOOKAHEAD_MIN,
+            siloAssistConfig.LOOKAHEAD_MAX
+        )
+    end
+end
+
 function siloAssistVehicleState.setTiltOffset(offset)
     if siloAssistVehicleState.currentState ~= nil then
         siloAssistVehicleState.currentState.tiltOffset = math.clamp(
@@ -195,14 +216,26 @@ function siloAssistVehicleState.setTiltOffset(offset)
     end
 end
 
+function siloAssistVehicleState.getTopoGain()
+    if siloAssistVehicleState.currentState ~= nil then
+        return siloAssistVehicleState.currentState.topoGain
+    end
+    return siloAssistConfig.TOPO_MAP_CORRECTION_GAIN
+end
+
+function siloAssistVehicleState.setTopoGain(gain)
+    if siloAssistVehicleState.currentState ~= nil then
+        siloAssistVehicleState.currentState.topoGain = math.clamp(
+            gain, 0, siloAssistConfig.TOPO_MAP_CORRECTION_MAX)
+    end
+end
+
 ---------------------------------------------------------------------
 -- Reset runtime state (called when deactivating or switching vehicles)
 ---------------------------------------------------------------------
 function siloAssistVehicleState.resetRuntimeState()
     siloAssistState.isStuck = false
     siloAssistState.stuckTimer = 0
-    siloAssistState.wheelSlipDetected = false
-    siloAssistState.throttleActive = false
     siloAssistState.isReversing = false
     siloAssistState.wasReversing = false
     siloAssistState.wasInSilo = false
@@ -245,6 +278,8 @@ function siloAssistVehicleState.saveToXML()
         xmlFile:setFloat(vKey .. "#heightOffset", state.heightOffset or siloAssistConfig.DEFAULT_HEIGHT_OFFSET)
         xmlFile:setFloat(vKey .. "#tiltOffset", state.tiltOffset or siloAssistConfig.DEFAULT_TILT_OFFSET)
         xmlFile:setFloat(vKey .. "#followFactor", state.followFactor or siloAssistConfig.FOLLOW_FACTOR)
+        xmlFile:setFloat(vKey .. "#lookaheadTime", state.lookaheadTime or siloAssistConfig.LOOKAHEAD_TIME)
+        xmlFile:setFloat(vKey .. "#topoGain", state.topoGain or siloAssistConfig.TOPO_MAP_CORRECTION_GAIN)
         xmlFile:setBool(vKey .. "#hudVisible", state.hudVisible or false)
         i = i + 1
     end
@@ -286,6 +321,8 @@ function siloAssistVehicleState.loadFromXML()
         local heightOffset = xmlFile:getFloat(vKey .. "#heightOffset") or siloAssistConfig.DEFAULT_HEIGHT_OFFSET
         local tiltOffset = xmlFile:getFloat(vKey .. "#tiltOffset") or siloAssistConfig.DEFAULT_TILT_OFFSET
         local followFactor = xmlFile:getFloat(vKey .. "#followFactor") or siloAssistConfig.FOLLOW_FACTOR
+        local lookaheadTime = xmlFile:getFloat(vKey .. "#lookaheadTime") or siloAssistConfig.LOOKAHEAD_TIME
+        local topoGain = xmlFile:getFloat(vKey .. "#topoGain") or siloAssistConfig.TOPO_MAP_CORRECTION_GAIN
         local hudVisible = xmlFile:getBool(vKey .. "#hudVisible") or false
 
         if configFile ~= "" then
@@ -297,6 +334,8 @@ function siloAssistVehicleState.loadFromXML()
             state.heightOffset = heightOffset
             state.tiltOffset = tiltOffset
             state.followFactor = followFactor
+            state.lookaheadTime = lookaheadTime
+            state.topoGain = topoGain
             state.hudVisible = hudVisible
             state.state = siloAssistConfig.STATE_OFF
             siloAssistVehicleState.vehicleStates[normalizedKey] = state

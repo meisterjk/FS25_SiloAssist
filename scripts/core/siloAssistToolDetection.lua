@@ -18,6 +18,7 @@ siloAssistToolDetection.jointDescIndex = nil
 siloAssistToolDetection.cylinderedVehicle = nil
 siloAssistToolDetection.cachedIsReversing = false
 siloAssistToolDetection.isFrontAttached = false
+siloAssistToolDetection.bladePushDir = 1   -- 1 = vorne (Samples in Fahrzeug-Vorwärtsrichtung), -1 = hinten (Samples entgegen Fahrzeug-Vorwärtsrichtung)
 
 function siloAssistToolDetection.reset()
     if siloAssistToolDetection.controlType == "cylindered" and siloAssistToolDetection.armToolIndex ~= nil then
@@ -41,6 +42,7 @@ function siloAssistToolDetection.reset()
     siloAssistToolDetection.cylinderedVehicle = nil
     siloAssistToolDetection.cachedIsReversing = false
     siloAssistToolDetection.isFrontAttached = false
+    siloAssistToolDetection.bladePushDir = 1
 end
 
 function siloAssistToolDetection.isReversing(vehicle)
@@ -244,11 +246,13 @@ function siloAssistToolDetection.initTool(vehicle)
     siloAssistToolDetection.bladeNode = siloAssistToolDetection.getBladeNode(toolType, toolObject, vehicle)
 
     siloAssistToolDetection.isFrontAttached = siloAssistToolDetection.detectIsFrontAttached(vehicle, toolObject, controlType)
+    siloAssistToolDetection.bladePushDir = siloAssistToolDetection.isFrontAttached and 1 or -1
 
     siloAssistDebug.log("Tool", string.format(
-        "initTool: type=%s ctrl=%s bladeNode=%s isFront=%s",
+        "initTool: type=%s ctrl=%s bladeNode=%s isFront=%s bladePushDir=%s",
         tostring(toolType), tostring(controlType), tostring(siloAssistToolDetection.bladeNode),
-        tostring(siloAssistToolDetection.isFrontAttached)
+        tostring(siloAssistToolDetection.isFrontAttached),
+        tostring(siloAssistToolDetection.bladePushDir)
     ))
 
     if controlType == "cylindered" then
@@ -273,10 +277,10 @@ end
 
 ---------------------------------------------------------------------
 -- Detect if tool is attached to the front of the vehicle.
--- Front-mounted tools need PITCH_FACTOR +1 (tilt same direction as pitch).
--- Rear-mounted tools need PITCH_FACTOR -1 (tilt opposite to pitch).
--- For 3-point hitch: check Z position of attacher joint relative to vehicle root.
--- For wheel loaders (cylindered): always front-mounted.
+-- Front-mounted: isFrontAttached=true, pitchFactor=+1, bladePushDir=1.
+-- Rear-mounted: isFrontAttached=false, pitchFactor=-1, bladePushDir=-1.
+-- 3-point hitch: Z position of joint node relative to vehicle root (+Z = vorne).
+-- Wheel loaders (cylindered): always front-mounted.
 ---------------------------------------------------------------------
 function siloAssistToolDetection.detectIsFrontAttached(vehicle, toolObject, controlType)
     if controlType == "cylindered" then
@@ -295,7 +299,7 @@ function siloAssistToolDetection.detectIsFrontAttached(vehicle, toolObject, cont
                 local jointNode = joint.node
                 if jointNode ~= nil then
                     local _, _, tz = localToLocal(jointNode, vehicle.rootNode, 0, 0, 0)
-                    return tz < 0
+                    return tz > 0
                 end
             end
         end
@@ -303,7 +307,7 @@ function siloAssistToolDetection.detectIsFrontAttached(vehicle, toolObject, cont
 
     if toolObject ~= nil and toolObject.rootNode ~= nil then
         local _, _, tz = localToLocal(toolObject.rootNode, vehicle.rootNode, 0, 0, 0)
-        return tz < 0
+        return tz > 0
     end
 
     return false

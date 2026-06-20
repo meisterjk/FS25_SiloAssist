@@ -10,8 +10,9 @@ siloAssistTiltController = {}
 
 siloAssistTiltController.lastAppliedTiltDeg = 0
 siloAssistTiltController.lastToolPitchDeg = nil
-siloAssistTiltController.cachedAutoTilt = 0
-siloAssistTiltController.lastStagedFillHeight = -1
+siloAssistTiltController.saturationTilt = 0
+siloAssistTiltController.forceTiltActive = false
+siloAssistTiltController.forceTiltDeg = 0
 
 ---------------------------------------------------------------------
 -- Reset
@@ -19,34 +20,94 @@ siloAssistTiltController.lastStagedFillHeight = -1
 function siloAssistTiltController.reset()
     siloAssistTiltController.lastAppliedTiltDeg = 0
     siloAssistTiltController.lastToolPitchDeg = nil
-    siloAssistTiltController.cachedAutoTilt = 0
-    siloAssistTiltController.lastStagedFillHeight = -1
+    siloAssistTiltController.saturationTilt = 0
+    siloAssistTiltController.forceTiltActive = false
+    siloAssistTiltController.forceTiltDeg = 0
 end
 
 ---------------------------------------------------------------------
 -- Update: called every frame when assist is active
 ---------------------------------------------------------------------
-function siloAssistTiltController.update(vehicle)
-    local config = siloAssistConfig
-    local vehiclePitchDeg = siloAssistHeightController.vehiclePitchDeg or 0
-    local pitchFactor = siloAssistToolDetection.isFrontAttached and -1 or 1
+---------------------------------------------------------------------
+-- Force tilt override (used for entry/exit mode)
+---------------------------------------------------------------------
+function siloAssistTiltController.forceTilt(vehicle, targetDeg)
+    siloAssistTiltController.forceTiltActive = true
+    siloAssistTiltController.forceTiltDeg = targetDeg
+    siloAssistTiltController.lastAppliedTiltDeg = targetDeg
+    siloAssistDebug.log("Tilt", string.format("forceTilt: %.1f°", targetDeg))
+    if siloAssistToolDetection.controlType == "attacherJointControl" then
+        siloAssistTiltController.applyTilt3Point(siloAssistToolDetection.toolObject, targetDeg)
+    elseif siloAssistToolDetection.controlType == "cylindered" then
+        siloAssistTiltController.applyTiltCylindered(targetDeg)
+    end
+end
 
-    local currentStagedFill = siloAssistSiloDetector.stagedFillHeight or 0
-    if math.abs(currentStagedFill - siloAssistTiltController.lastStagedFillHeight) > 0.001 then
-        siloAssistTiltController.cachedAutoTilt = currentStagedFill * config.AUTO_TILT_FACTOR
-        siloAssistTiltController.lastStagedFillHeight = currentStagedFill
-        siloAssistDebug.log("Tilt", string.format(
-            "autoTilt recalc: stagedFill=%.3f autoTilt=%.1f",
-            currentStagedFill, siloAssistTiltController.cachedAutoTilt
-        ))
+function siloAssistTiltController.clearForceTilt()
+    if siloAssistTiltController.forceTiltActive then
+        siloAssistDebug.log("Tilt", "clearForceTilt")
+    end
+    siloAssistTiltController.forceTiltActive = false
+    siloAssistTiltController.forceTiltDeg = 0
+end
+
+function siloAssistTiltController.update(vehicle, dt)
+    -- Force tilt active: re-apply every frame and skip normal logic
+    if siloAssistTiltController.forceTiltActive then
+        local deg = siloAssistTiltController.forceTiltDeg
+        if siloAssistToolDetection.controlType == "attacherJointControl" then
+            siloAssistTiltController.applyTilt3Point(siloAssistToolDetection.toolObject, deg)
+        elseif siloAssistToolDetection.controlType == "cylindered" then
+            siloAssistTiltController.applyTiltCylindered(deg)
+        end
+        return
     end
 
+    local config = siloAssistConfig
+    local vehiclePitchDeg = siloAssistHeightController.vehiclePitchDeg or 0
+    local pitchFactor = siloAssistToolDetection.isFrontAttached and 1 or -1
+
+    -- Auto-tilt: degrees = fill height * AUTO_TILT_FACTOR (e.g. 2.5m * 4 = 10°)
+    local currentStagedFill = siloAssistSiloDetector.stagedFillHeight or 0
+    local autoTilt = currentStagedFill * config.AUTO_TILT_FACTOR
+
+    -- Saturation tilt: alpha at limit but height error remains
+    local isSaturated = false
+    if siloAssistToolDetection.controlType == "attacherJointControl" then
+        isSaturated = siloAssistHeightController.alphaAtUpperLimit
+    end
+    local heightDiff = siloAssistHeightController.lastHeightDiff or 0
+
+    if isSaturated and math.abs(heightDiff) > 0.001 then
+        local targetSat = heightDiff * config.TILT_HEIGHT_GAIN
+        targetSat = math.clamp(targetSat, -config.SATURATION_MAX, config.SATURATION_MAX)
+        siloAssistTiltController.saturationTilt = targetSat
+    else
+        local decay = config.SATURATION_DECAY_RATE * dt
+        local currentSat = siloAssistTiltController.saturationTilt
+        if math.abs(currentSat) < decay then
+            siloAssistTiltController.saturationTilt = 0
+        else
+            local sign = currentSat > 0 and 1 or -1
+            siloAssistTiltController.saturationTilt = currentSat - sign * decay
+        end
+    end
+
+    siloAssistDebug.logThrottled("Tilt", "calc", string.format(
+        "stagedFill=%.2f autoTilt=%.1f satTilt=%.1f isSat=%s hDiff=%.3f",
+        currentStagedFill, autoTilt, siloAssistTiltController.saturationTilt,
+        tostring(isSaturated), heightDiff
+    ))
+
     local targetTiltDeg
-    if siloAssistState.isReversing and siloAssistToolDetection.toolType ~= "shovel" then
+    local shouldRaiseTilt = (siloAssistToolDetection.isFrontAttached == siloAssistState.isReversing)
+    if shouldRaiseTilt and siloAssistToolDetection.toolType ~= "shovel" then
         targetTiltDeg = 0
+        siloAssistTiltController.saturationTilt = 0
+        siloAssistTiltController.clearForceTilt()
     else
         targetTiltDeg = config.SHIELD_TILT_DEG + siloAssistVehicleState.getTiltOffset()
-            + siloAssistTiltController.cachedAutoTilt + vehiclePitchDeg * pitchFactor
+            + autoTilt + vehiclePitchDeg * pitchFactor + siloAssistTiltController.saturationTilt
     end
     targetTiltDeg = math.clamp(targetTiltDeg, config.TILT_MIN, config.TILT_MAX)
 
@@ -62,9 +123,10 @@ function siloAssistTiltController.update(vehicle)
     end
 
     siloAssistDebug.log("Tilt", string.format(
-        "APPLY: vehPitch=%.2f pitchFac=%d isFront=%s target=%.2f last=%.2f ctrl=%s",
+        "APPLY: vehPitch=%.2f pitchFac=%d isFront=%s target=%.2f last=%.2f autoTilt=%.1f satTilt=%.1f ctrl=%s",
         vehiclePitchDeg, pitchFactor, tostring(siloAssistToolDetection.isFrontAttached),
-        targetTiltDeg, lastTilt, tostring(siloAssistToolDetection.controlType)
+        targetTiltDeg, lastTilt, autoTilt, siloAssistTiltController.saturationTilt,
+        tostring(siloAssistToolDetection.controlType)
     ))
 
     siloAssistTiltController.lastAppliedTiltDeg = targetTiltDeg

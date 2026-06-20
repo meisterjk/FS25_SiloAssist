@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <modDesc descVersion="109">
     <author>mj</author>
-    <version>0.3.1.0</version>
+    <version>0.3.2.0</version>
     <title>
         <en>Silo Assist</en>
         <de>Silo Assist</de>
@@ -23,10 +23,12 @@ Tastenkombinationen: Strg+L - Assist an/aus | RStrg+L - Modus wechseln (Durchfah
         <sourceFile filename="scripts/core/siloAssistDebug.lua"/>
         <sourceFile filename="scripts/core/siloAssistVehicleState.lua"/>
         <sourceFile filename="scripts/core/siloAssistToolDetection.lua"/>
+        <sourceFile filename="scripts/core/siloAssistTopoMap.lua"/>
         <sourceFile filename="scripts/core/siloAssistSiloDetector.lua"/>
         <sourceFile filename="scripts/controller/siloAssistTiltController.lua"/>
         <sourceFile filename="scripts/hooks/siloAssistHeightController.lua"/>
         <sourceFile filename="scripts/hooks/siloAssistDumpController.lua"/>
+        <sourceFile filename="scripts/hud/siloAssistDrawing.lua"/>
         <sourceFile filename="scripts/hud/siloAssistHud.lua"/>
         <sourceFile filename="scripts/hud/siloAssistModPanel.lua"/>
         <sourceFile filename="scripts/siloAssistMain.lua"/>

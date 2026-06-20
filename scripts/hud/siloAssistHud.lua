@@ -34,7 +34,7 @@ siloAssistHud.COLOR_VALUE = {1, 1, 1, 0.95}
 siloAssistHud.COLOR_SWITCH_ON = {0.3, 0.6, 1.0, 0.95}
 siloAssistHud.COLOR_SWITCH_ON_HOVER = {0.5, 0.75, 1.0, 1.0}
 
-siloAssistHud.PAGES = {"setup", "debug"}
+siloAssistHud.PAGES = {"setup", "debug", "profile"}
 siloAssistHud.PAGE_INDEX = 1
 
 siloAssistHud.FALLBACK_UVS = {0, 0, 1, 0, 1, 1, 0, 1}
@@ -90,7 +90,7 @@ siloAssistHud.savedHudY = nil
 
 -- Interactive element bounds (set each frame, used by mouseEvent)
 siloAssistHud._closeBtn = nil
-siloAssistHud._checkBtn = nil
+-- Debug checkboxes
 siloAssistHud._prevBtn = nil
 siloAssistHud._nextBtn = nil
 siloAssistHud._modeDtBtn = nil
@@ -101,6 +101,10 @@ siloAssistHud._tiltMinusBtn = nil
 siloAssistHud._tiltPlusBtn = nil
 siloAssistHud._followMinusBtn = nil
 siloAssistHud._followPlusBtn = nil
+siloAssistHud._lookaheadMinusBtn = nil
+siloAssistHud._lookaheadPlusBtn = nil
+siloAssistHud._topoGainMinusBtn = nil
+siloAssistHud._topoGainPlusBtn = nil
 siloAssistHud._toggleBtn = nil
 
 ---------------------------------------------------------------------
@@ -144,6 +148,10 @@ function siloAssistHud:init()
     siloAssistHud.tiltMinusOv = makeOv(P .. ".iconMinus")
     siloAssistHud.followPlusOv = makeOv(P .. ".iconPlus")
     siloAssistHud.followMinusOv = makeOv(P .. ".iconMinus")
+    siloAssistHud.lookaheadPlusOv = makeOv(P .. ".iconPlus")
+    siloAssistHud.lookaheadMinusOv = makeOv(P .. ".iconMinus")
+    siloAssistHud.topoGainPlusOv = makeOv(P .. ".iconPlus")
+    siloAssistHud.topoGainMinusOv = makeOv(P .. ".iconMinus")
     siloAssistHud.checkOvUnchecked = makeOv(P .. ".checkboxUnchecked")
     siloAssistHud.checkOvChecked = makeOv(P .. ".checkboxChecked")
     siloAssistHud.switchOffOv = makeOv(P .. ".switchOff")
@@ -155,6 +163,19 @@ function siloAssistHud:init()
         ov:setUVs(uvs)
         ov:setColor(unpack(siloAssistHud.ROW_ODD))
         siloAssistHud.rowOverlays[i] = ov
+    end
+
+    siloAssistHud.profileBars = {}
+    siloAssistHud.profileTargetLine = Overlay.new(tex, 0, 0, 0, 0)
+    siloAssistHud.profileTargetLine:setUVs(uvs)
+    siloAssistHud.profileBladeLine = Overlay.new(tex, 0, 0, 0, 0)
+    siloAssistHud.profileBladeLine:setUVs(uvs)
+    siloAssistHud.profileLrBar = Overlay.new(tex, 0, 0, 0, 0)
+    siloAssistHud.profileLrBar:setUVs(uvs)
+    for i = 1, 15 do
+        local ov = Overlay.new(tex, 0, 0, 0, 0)
+        ov:setUVs(uvs)
+        siloAssistHud.profileBars[i] = ov
     end
 
     siloAssistHud.isInitialized = true
@@ -203,7 +224,12 @@ function siloAssistHud:draw()
     siloAssistHud._tiltPlusBtn = nil
     siloAssistHud._followMinusBtn = nil
     siloAssistHud._followPlusBtn = nil
-    siloAssistHud._toggleBtn = nil
+    siloAssistHud._topoGainMinusBtn = nil
+    siloAssistHud._topoGainPlusBtn = nil
+siloAssistHud._toggleBtn = nil
+siloAssistHud._debugLinesBtn = nil
+siloAssistHud._debugDebugBtn = nil
+siloAssistHud._debugLogBtn = nil
 
     local w, _ = getNormalizedScreenValues(siloAssistHud.WIDTH, 1)
     local m, _ = getNormalizedScreenValues(siloAssistHud.MARGIN, 1)
@@ -271,33 +297,11 @@ function siloAssistHud:draw()
     siloAssistHud.closeOv:setColor(unpack(isHoverClose and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_CLOSE))
     siloAssistHud.closeOv:render()
 
-    -- Debug checkbox (left of close button)
-    local checkX = closeBtnX - m - checkW
-    local checkY = headerY + siloAssistHud:centerY(hH, checkH)
-    siloAssistHud._checkBtn = {x = checkX, y = checkY, w = checkW, h = checkH}
-    local checkOv = siloAssistDebug.enabled and siloAssistHud.checkOvChecked or siloAssistHud.checkOvUnchecked
-    checkOv:setPosition(checkX, checkY)
-    checkOv:setDimension(checkW, checkH)
-    checkOv:setColor(1, 1, 1, 0.95)
-    checkOv:render()
-
-    -- "debug" label left of checkbox
-    setTextColor(1, 1, 1, 0.7)
-    setTextAlignment(RenderText.ALIGN_RIGHT)
-    renderText(checkX - m, headerY + siloAssistHud:centerY(hH, fSmall), fSmall, "debug")
-
-    -- "|" separator left of debug
-    local debugTextW = getTextWidth(fSmall, "debug")
-    local sepX = checkX - m - debugTextW - m
-    setTextColor(1, 1, 1, 0.4)
-    setTextAlignment(RenderText.ALIGN_RIGHT)
-    renderText(sepX, headerY + siloAssistHud:centerY(hH, fSmall), fSmall, "|")
-
-    -- Toggle switch (left of separator)
+    -- Toggle switch (left of close button)
     local state = siloAssistVehicleState.getState()
     local isActive = state ~= siloAssistConfig.STATE_OFF
     local toggleOv = isActive and siloAssistHud.switchOnOv or siloAssistHud.switchOffOv
-    local toggleX = sepX - m - switchW
+    local toggleX = closeBtnX - m - switchW
     local toggleY = headerY + siloAssistHud:centerY(hH, switchH)
     siloAssistHud._toggleBtn = {x = toggleX, y = toggleY, w = switchW, h = switchH}
     local isHoverToggle = siloAssistHud.mouseX >= toggleX
@@ -378,6 +382,43 @@ function siloAssistHud:draw()
             setTextColor(1, 1, 1, 0.9)
             setTextAlignment(RenderText.ALIGN_LEFT)
             renderText(wedgeLabelX, textOfsY, fDefault, wedgeText)
+
+        elseif line.type == "debugCheckboxes" then
+            local cbY = rowY + siloAssistHud:centerY(lH, checkH)
+            local textOfsY = rowY + siloAssistHud:centerY(lH, fDefault)
+
+            setTextColor(0.7, 0.7, 0.7, 0.9)
+            setTextAlignment(RenderText.ALIGN_LEFT)
+            renderText(x + m, textOfsY, fDefault, "Debug:")
+
+            local chkNames = {"Lines", "Values", "Log"}
+            local chkStates = {
+                siloAssistDebug.showLines,
+                siloAssistDebug.showDebug,
+                siloAssistDebug.showLog
+            }
+            local margin = getTextWidth(fDefault, "  ")
+            local curX = x + w - m
+            for idx = 3, 1, -1 do
+                local labelW = getTextWidth(fDefault, chkNames[idx])
+                local cbPosX = curX - checkW - m - labelW
+                local ov = chkStates[idx] and siloAssistHud.checkOvChecked or siloAssistHud.checkOvUnchecked
+                ov:setPosition(cbPosX, cbY)
+                ov:setDimension(checkW, checkH)
+                ov:setColor(1, 1, 1, 0.95)
+                ov:render()
+
+                setTextColor(1, 1, 1, 0.9)
+                setTextAlignment(RenderText.ALIGN_LEFT)
+                renderText(cbPosX + checkW + m, textOfsY, fDefault, chkNames[idx])
+
+                local btn = {x = cbPosX, y = rowY, w = checkW + m + labelW, h = lH}
+                if idx == 1 then siloAssistHud._debugLinesBtn = btn
+                elseif idx == 2 then siloAssistHud._debugDebugBtn = btn
+                elseif idx == 3 then siloAssistHud._debugLogBtn = btn end
+
+                curX = cbPosX - margin
+            end
 
         elseif line.type == "offset" then
             local labelStr = line.text
@@ -511,6 +552,118 @@ function siloAssistHud:draw()
             setTextAlignment(RenderText.ALIGN_LEFT)
             renderText(valX, textY, fDefault, followStr)
 
+        elseif line.type == "lookahead" then
+            local labelStr = line.text
+            setTextColor(1, 1, 1, 0.9)
+            setTextAlignment(RenderText.ALIGN_LEFT)
+            renderText(x + m, textY, fDefault, labelStr)
+
+            local lookVal = siloAssistVehicleState.getLookaheadTime()
+            local lookStr = string.format("%.1fs", lookVal)
+            local lookTextW = getTextWidth(fDefault, lookStr)
+
+            local plusX = x + w - m - followBtnW
+            local valX = plusX - m - lookTextW
+            local minusX = valX - m - followBtnW
+
+            siloAssistHud._lookaheadMinusBtn = {x = minusX, y = rowY, w = followBtnW, h = lH}
+            siloAssistHud._lookaheadPlusBtn = {x = plusX, y = rowY, w = followBtnW, h = lH}
+
+            local hovMinus = siloAssistHud.mouseX >= minusX
+                and siloAssistHud.mouseX <= minusX + followBtnW
+                and siloAssistHud.mouseY >= rowY
+                and siloAssistHud.mouseY <= rowY + lH
+            local hovPlus = siloAssistHud.mouseX >= plusX
+                and siloAssistHud.mouseX <= plusX + followBtnW
+                and siloAssistHud.mouseY >= rowY
+                and siloAssistHud.mouseY <= rowY + lH
+
+            local colMinus = hovMinus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
+            local colPlus = hovPlus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
+
+            local btnY = rowY + siloAssistHud:centerY(lH, followBtnH)
+            siloAssistHud.lookaheadMinusOv:setPosition(minusX, btnY)
+            siloAssistHud.lookaheadMinusOv:setDimension(followBtnW, followBtnH)
+            siloAssistHud.lookaheadMinusOv:setColor(unpack(colMinus))
+            siloAssistHud.lookaheadMinusOv:render()
+
+            siloAssistHud.lookaheadPlusOv:setPosition(plusX, btnY)
+            siloAssistHud.lookaheadPlusOv:setDimension(followBtnW, followBtnH)
+            siloAssistHud.lookaheadPlusOv:setColor(unpack(colPlus))
+            siloAssistHud.lookaheadPlusOv:render()
+
+            setTextColor(1, 1, 1, 0.9)
+            setTextAlignment(RenderText.ALIGN_LEFT)
+            renderText(valX, textY, fDefault, lookStr)
+
+        elseif line.type == "topoGain" then
+            local labelStr = line.text
+            setTextColor(1, 1, 1, 0.9)
+            setTextAlignment(RenderText.ALIGN_LEFT)
+            renderText(x + m, textY, fDefault, labelStr)
+
+            local gainVal = siloAssistVehicleState.getTopoGain()
+            local gainStr = string.format("%.1f", gainVal)
+            local gainTextW = getTextWidth(fDefault, gainStr)
+
+            local plusX = x + w - m - followBtnW
+            local valX = plusX - m - gainTextW
+            local minusX = valX - m - followBtnW
+
+            siloAssistHud._topoGainMinusBtn = {x = minusX, y = rowY, w = followBtnW, h = lH}
+            siloAssistHud._topoGainPlusBtn = {x = plusX, y = rowY, w = followBtnW, h = lH}
+
+            local hovMinus = siloAssistHud.mouseX >= minusX
+                and siloAssistHud.mouseX <= minusX + followBtnW
+                and siloAssistHud.mouseY >= rowY
+                and siloAssistHud.mouseY <= rowY + lH
+            local hovPlus = siloAssistHud.mouseX >= plusX
+                and siloAssistHud.mouseX <= plusX + followBtnW
+                and siloAssistHud.mouseY >= rowY
+                and siloAssistHud.mouseY <= rowY + lH
+
+            local colMinus = hovMinus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
+            local colPlus = hovPlus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
+
+            local btnY = rowY + siloAssistHud:centerY(lH, followBtnH)
+            siloAssistHud.topoGainMinusOv:setPosition(minusX, btnY)
+            siloAssistHud.topoGainMinusOv:setDimension(followBtnW, followBtnH)
+            siloAssistHud.topoGainMinusOv:setColor(unpack(colMinus))
+            siloAssistHud.topoGainMinusOv:render()
+
+            siloAssistHud.topoGainPlusOv:setPosition(plusX, btnY)
+            siloAssistHud.topoGainPlusOv:setDimension(followBtnW, followBtnH)
+            siloAssistHud.topoGainPlusOv:setColor(unpack(colPlus))
+            siloAssistHud.topoGainPlusOv:render()
+
+            setTextColor(1, 1, 1, 0.9)
+            setTextAlignment(RenderText.ALIGN_LEFT)
+            renderText(valX, textY, fDefault, gainStr)
+
+        elseif line.type == "miniProfile" then
+            local hc = siloAssistHeightController
+            -- Build 5-point profile from CL+CR means (same as analyzeSurfaceProfile)
+            local ch = hc.collisionSampleHeights
+            local s = {}
+            if ch ~= nil and #ch >= 5 then
+                for i = 1, 5 do
+                    if ch[i] ~= nil and ch[i].leftFill ~= nil and ch[i].rightFill ~= nil then
+                        s[i] = (ch[i].leftFill + ch[i].rightFill) * 0.5
+                    end
+                end
+            end
+            if s[1] ~= nil then
+                local function cm(v)
+                    if v == nil or v <= 0 then return " 0" end
+                    return string.format("%2.0f", v * 100)
+                end
+                local profileStr = string.format("%s %s %s %s %scm",
+                    cm(s[1]), cm(s[2]), cm(s[3]), cm(s[4]), cm(s[5]))
+                setTextColor(0.3, 0.8, 0.3, 0.9)
+                setTextAlignment(RenderText.ALIGN_LEFT)
+                renderText(x + m, textY, fSmall, "P: " .. profileStr)
+            end
+
         elseif line.type == "valuePair" then
             if line.color then
                 setTextColor(unpack(line.color))
@@ -552,6 +705,11 @@ function siloAssistHud:draw()
     siloAssistHud.footerOverlay:setDimension(w, fH)
     siloAssistHud.footerOverlay:render()
 
+    -- Profile chart overlay (fills content area when on profile page)
+    if siloAssistHud.PAGES[siloAssistHud.PAGE_INDEX] == "profile" then
+        siloAssistHud:renderProfileChart(x, y, w, m, hH, fH, lH, contentH, fFooter, fSmall)
+    end
+
     local prevX = x + m
     local prevY = y + siloAssistHud:centerY(fH, navBtnH)
     siloAssistHud._prevBtn = {x = prevX, y = prevY, w = navBtnW, h = navBtnH}
@@ -573,7 +731,14 @@ function siloAssistHud:draw()
     siloAssistHud.nextOv:render()
 
     local pageTitle = siloAssistHud.PAGES[siloAssistHud.PAGE_INDEX]
-    local titleLabel = pageTitle == "setup" and g_i18n:getText("sa_mode") or g_i18n:getText("sa_debugTab")
+    local titleLabel
+    if pageTitle == "setup" then
+        titleLabel = g_i18n:getText("sa_mode")
+    elseif pageTitle == "debug" then
+        titleLabel = g_i18n:getText("sa_debugTab")
+    else
+        titleLabel = g_i18n:getText("sa_profileTab")
+    end
     setTextColor(0.65, 0.65, 0.65, 0.9)
     setTextAlignment(RenderText.ALIGN_CENTER)
     renderText(x + w * 0.5, y + siloAssistHud:centerY(fH, fFooter), fFooter, titleLabel)
@@ -593,6 +758,8 @@ function siloAssistHud.buildContent()
         siloAssistHud.buildSetupPage(lines)
     elseif page == "debug" then
         siloAssistHud.buildDebugPage(lines)
+    elseif page == "profile" then
+        siloAssistHud.buildProfilePage(lines)
     end
 
     return lines
@@ -603,9 +770,13 @@ function siloAssistHud.buildSetupPage(lines)
     local inSilo = siloAssistSiloDetector.isInSilo and siloAssistSiloDetector.currentSilo ~= nil
 
     table.insert(lines, { type = "checkboxes" })
+    table.insert(lines, { type = "debugCheckboxes" })
     table.insert(lines, { type = "offset", text = g_i18n:getText("sa_height") .. ":" })
     table.insert(lines, { type = "tilt", text = g_i18n:getText("sa_tilt") .. ":" })
     table.insert(lines, { type = "follow", text = g_i18n:getText("sa_follow") .. ":" })
+    table.insert(lines, { type = "lookahead", text = g_i18n:getText("sa_lookahead") .. ":" })
+    table.insert(lines, { type = "topoGain", text = "Map:" })
+    table.insert(lines, { type = "miniProfile" })
 
     -- Fill level (always shown)
     if inSilo then
@@ -672,71 +843,116 @@ function siloAssistHud.buildSetupPage(lines)
         table.insert(lines, { type = "value",
             text = g_i18n:getText("sa_stuck"), color = siloAssistHud.COLOR_WARN })
     end
+
+    -- "Silo eben!" confirmation (TopoMap done state)
+    if siloAssistTopoMap.doneConfirmed then
+        table.insert(lines, { type = "value",
+            text = "Silo eben!", color = siloAssistHud.COLOR_ACTIVE })
+    end
+end
+
+function siloAssistHud.buildProfilePage(lines)
+    for i = 1, 8 do
+        table.insert(lines, { type = "empty" })
+    end
 end
 
 function siloAssistHud.buildDebugPage(lines)
-    if not siloAssistDebug.enabled then
+    if not siloAssistDebug.showDebug then
         table.insert(lines, { type = "value",
             text = g_i18n:getText("sa_debugInactive"), color = siloAssistHud.COLOR_WARN })
         return
     end
 
-    local config = siloAssistConfig
+    local hc = siloAssistHeightController
+    local sd = siloAssistSiloDetector
+    local st = siloAssistState
+    local function jn(v) return v and "J" or "N" end
 
+    -- Geschwindigkeit | Festgefahren | Schlupf | Rückwärts
+    local speed = sd.vehicleSpeed or 0
+    local dirStr = st.isReversing and "<<" or ">>"
     table.insert(lines, { type = "value",
-        text = string.format("%s: %s", g_i18n:getText("sa_state"),
-            siloAssistVehicleState.getState()) })
+        text = string.format("Geschw: %.1f %s | Stuck: %s",
+            speed, dirStr, jn(st.isStuck)) })
 
+    -- Soll-Ist Differenz | Regelrichtung | Im Silo
     table.insert(lines, { type = "value",
-        text = string.format("Offset: %.3f | AlphaStep: %.3f",
-            siloAssistVehicleState.getHeightOffset(), config.ALPHA_STEP) })
+        text = string.format("Soll-Ist: %+.3fm | Richtg: %+d | ImSilo: %s",
+            hc.lastHeightDiff or 0,
+            hc.lastAlphaDirection or 0,
+            jn(sd.isInSilo)) })
 
-    table.insert(lines, { type = "value",
-        text = string.format("RampS: %.2f->%.2f | RampE: %.2f->%.2f",
-            config.RAMP_START_PCT, config.RAMP_MIN_START_PCT,
-            config.RAMP_END_PCT, config.RAMP_MAX_END_PCT) })
-
-    if siloAssistSiloDetector.isInSilo then
-        table.insert(lines, { type = "value",
-            text = string.format("FillH@Veh: %.3f | FillH@Blade: %.3f",
-                siloAssistSiloDetector.densityFillHeightAtVehicle or 0,
-                siloAssistSiloDetector.densityFillHeightAtBlade or 0) })
-
-        table.insert(lines, { type = "value",
-            text = string.format("TerrH: %.3f | StageH: %.3f",
-                siloAssistSiloDetector.siloTerrainHeightAtVehicle or 0,
-                siloAssistSiloDetector.stagedFillHeight or 0) })
+    -- CL/CR Stichproben (Füllhöhe an Schildkanten, 5 Distanzen: 1/3/5/8/10m)
+    -- S1-S5 Center-Punkte wurden entfernt, nur CL+CR bleibt
+    local ch = hc.collisionSampleHeights
+    local function cf(side, i)
+        if ch ~= nil and ch[i] ~= nil and ch[i][side] ~= nil then
+            return string.format("%.2f", ch[i][side])
+        end
+        return "--"
     end
+    -- Zeile 1: CL1/CR1 (1m) + CL2/CR2 (3m)
+    table.insert(lines, { type = "value",
+        text = string.format("CL1:%s CR1:%s | CL2:%s CR2:%s",
+            cf("leftFill", 1), cf("rightFill", 1),
+            cf("leftFill", 2), cf("rightFill", 2)) })
+    -- Zeile 2: CL3/CR3 (5m) + CL4/CR4 (8m)
+    table.insert(lines, { type = "value",
+        text = string.format("CL3:%s CR3:%s | CL4:%s CR4:%s",
+            cf("leftFill", 3), cf("rightFill", 3),
+            cf("leftFill", 4), cf("rightFill", 4)) })
+    -- Zeile 3: CL5/CR5 (10m) + Kollisionshöhe unterm Schild + Median
+    local colH = hc.lastRaycastGroundDistance
+    local colStr = colH ~= nil and string.format("%.2fm", colH) or "--"
+    local medStr = hc.lastSurfaceTarget ~= nil and string.format("%.2f", hc.lastSurfaceTarget) or "--"
+    table.insert(lines, { type = "value",
+        text = string.format("CL5:%s CR5:%s | Koll:%s Med:%s",
+            cf("leftFill", 5), cf("rightFill", 5), colStr, medStr) })
 
-    if siloAssistHeightController.lastRaycastGroundDistance ~= nil then
-        table.insert(lines, { type = "value",
-            text = string.format("RayH: %.3fm", siloAssistHeightController.lastRaycastGroundDistance) })
+    -- Profil-Typ + Vorhalt + LR + Silo
+    local lrVal = hc.longRangeFillHeight
+    local lrStr = lrVal ~= nil and string.format("%.2fm", lrVal) or "--"
+    local lrDetected = hc.longRangeFillDetected and "J" or "N"
+    local sd = siloAssistSiloDetector
+    local siloStr = "--"
+    if sd.currentSilo ~= nil then
+        siloStr = string.format("%.1fx%.1fm", sd.siloLength, sd.siloWidth)
     end
+    local profileStr = string.format("%s | Vorhalt: %+.0fmm | LR: %s (%s) | %s",
+        hc._profileType or "?",
+        (hc._preemptiveHeightDiff or 0) * 1000,
+        lrStr, lrDetected, siloStr)
+    table.insert(lines, { type = "value", text = profileStr })
 
+    -- Vorderachse | Hinterachse Bodenabstand | Nickwinkel
+    local function gv(v)
+        return v ~= nil and string.format("%.2fm", v) or "--"
+    end
     table.insert(lines, { type = "value",
-        text = string.format("Speed: %.1f | Stuck: %s | Slip: %s | Rev: %s",
-            siloAssistSiloDetector.vehicleSpeed or 0,
-            tostring(siloAssistState.isStuck),
-            tostring(siloAssistState.wheelSlipDetected),
-            tostring(siloAssistState.isReversing)) })
+        text = string.format("VoAchs: %s | HiAchs: %s | Nick: %.1f°",
+            gv(hc.vehicleFrontGroundHeight),
+            gv(hc.vehicleRearGroundHeight),
+            hc.vehiclePitchDeg or 0) })
 
-    table.insert(lines, { type = "value",
-        text = string.format("hDiff: %.3f | InSilo: %s | Pitch: %.1f",
-            siloAssistHeightController.lastHeightDiff or 0,
-            tostring(siloAssistSiloDetector.isInSilo),
-            siloAssistHeightController.vehiclePitchDeg or 0) })
+    -- (Alte absolute-SurfaceY CL/CR-Zeilen entfernt — Füllhöhen oben schon angezeigt)
 
+    -- TopoMap stats
+    local tm = siloAssistTopoMap
+    local ts = tm.lastStats or {}
+    local tmStr
+    if tm.rows == 0 then
+        tmStr = "-- (kein Silo)"
+    else
+        local doneMark = ts.done and " [eben]" or ""
+        tmStr = string.format("avgP=%.2f avgR=%.2f cov=%.0f%% varP=%.3f cellsP=%d cellsR=%d%s",
+            ts.avgPlateau or 0, ts.avgRamp or 0,
+            ts.coveragePct or 0, ts.variancePlateau or 0,
+            ts.cellsPlateau or 0, ts.cellsRamp or 0, doneMark)
+    end
     table.insert(lines, { type = "value",
-        text = string.format("Tool: %s | Ctrl: %s | Front: %s",
-            tostring(siloAssistToolDetection.toolType),
-            tostring(siloAssistToolDetection.controlType),
-            tostring(siloAssistToolDetection.isFrontAttached)) })
-
-    table.insert(lines, { type = "value",
-        text = string.format("Tilt: %.1f | Pitch: %.1f | WedgePass: %d",
-            siloAssistTiltController.lastAppliedTiltDeg or 0,
-            siloAssistHeightController.lastPitchDeg or 0,
-            siloAssistHeightController.wedgePassCount or 0) })
+        text = "Map: " .. tmStr,
+        color = (ts.done == true) and siloAssistHud.COLOR_ACTIVE or siloAssistHud.COLOR_LABEL })
 end
 
 ---------------------------------------------------------------------
@@ -781,13 +997,23 @@ function siloAssistHud:mouseEvent(posX, posY, isDown, isUp, button)
             return true
         end
 
-        if siloAssistHud:isInButton(posX, posY, siloAssistHud._checkBtn) then
-            siloAssistDebug.toggle()
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._toggleBtn) then
+            siloAssist:toggleAssist()
             return true
         end
 
-        if siloAssistHud:isInButton(posX, posY, siloAssistHud._toggleBtn) then
-            siloAssist:toggleAssist()
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._debugLinesBtn) then
+            siloAssistDebug.toggleLines()
+            return true
+        end
+
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._debugDebugBtn) then
+            siloAssistDebug.toggleDebug()
+            return true
+        end
+
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._debugLogBtn) then
+            siloAssistDebug.toggleLog()
             return true
         end
 
@@ -851,6 +1077,26 @@ function siloAssistHud:mouseEvent(posX, posY, isDown, isUp, button)
             return true
         end
 
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._lookaheadMinusBtn) then
+            siloAssistConfig.adjustLookahead(-siloAssistConfig.LOOKAHEAD_STEP)
+            return true
+        end
+
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._lookaheadPlusBtn) then
+            siloAssistConfig.adjustLookahead(siloAssistConfig.LOOKAHEAD_STEP)
+            return true
+        end
+
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._topoGainMinusBtn) then
+            siloAssistConfig.adjustTopoGain(-0.1)
+            return true
+        end
+
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._topoGainPlusBtn) then
+            siloAssistConfig.adjustTopoGain(0.1)
+            return true
+        end
+
         -- Drag from header (but not on buttons)
         if siloAssistHud.hudPosX ~= nil and siloAssistHud.hudWidth ~= nil then
             local _, hH = getNormalizedScreenValues(1, siloAssistHud.HEADER_H)
@@ -901,40 +1147,272 @@ end
 
 ---------------------------------------------------------------------
 -- Draw 3D surface sample markers (debug mode only)
+-- CL/CR edge spheres + LR sphere. Uses i3D drawing (siloAssistDrawing).
 ---------------------------------------------------------------------
 function siloAssistHud:drawSurfaceSamples()
-    local samples = siloAssistHeightController.surfaceSamples
-    if samples == nil or #samples == 0 then
+    local cSamples = siloAssistHeightController.collisionSamples
+    local lrPos = siloAssistHeightController.longRangeWorldPos
+    if (cSamples == nil or #cSamples == 0) and lrPos == nil then
         return
     end
 
-    -- First pass: compute world-space surface points
-    local surfacePoints = {}
-    local prevSurfaceX, prevSurfaceY, prevSurfaceZ
-    for i, pos in ipairs(samples) do
-        local sx, sy, sz = pos[1], pos[2], pos[3]
-        local terrH, densH = DensityMapHeightUtil.getHeightAtWorldPos(sx, sy, sz)
-        local fillH = math.max((densH or terrH) - terrH, 0)
-        local surfaceY = terrH + fillH
+    local vizOffset = 2.0
+    local LINE_SCALE = 1.0
+    local SPHERE_SCALE = 0.15
+    local LR_SPHERE_SCALE = 0.25
+    local ok, err = pcall(function()
+        -- C1-C5 edge points (cyan=left, orange=right)
+        local lastCenterX, lastCenterY, lastCenterZ
+        local cHeights = siloAssistHeightController.collisionSampleHeights
+        if cSamples ~= nil and cHeights ~= nil then
+            local prevLeftX, prevLeftY, prevLeftZ
+            local prevRightX, prevRightY, prevRightZ
+            for i = 1, math.min(#cSamples, #cHeights) do
+                local entry = cSamples[i]
+                local hEntry = cHeights[i]
+                if entry ~= nil and hEntry ~= nil then
+                    local lVizY, rVizY
 
-        table.insert(surfacePoints, {sx, surfaceY, sz})
+                    -- Left edge (cyan)
+                    local lx, ly, lz = entry.left[1], entry.left[2], entry.left[3]
+                    local lCollY = hEntry.left
+                    if lCollY ~= nil then
+                        lVizY = lCollY + vizOffset
+                        if prevLeftX ~= nil then
+                            siloAssistDrawing:addLine(prevLeftX, prevLeftY, prevLeftZ,
+                                lx, lVizY, lz, 0, 1, 1, LINE_SCALE)
+                        end
+                        prevLeftX, prevLeftY, prevLeftZ = lx, lVizY, lz
+                        siloAssistDrawing:addSmallSphere(lx, lVizY, lz, 0, 1, 1)
+                        siloAssistDrawing:addLine(lx, lCollY, lz, lx, lVizY, lz, 0, 0.6, 0.6, LINE_SCALE)
+                    end
 
-        -- Connecting line to previous point
-        if prevSurfaceX ~= nil then
-            drawLine(prevSurfaceX, prevSurfaceY, prevSurfaceZ, sx, surfaceY, sz, 0, 1, 0, 0.6)
+                    -- Right edge (orange)
+                    local rx, ry, rz = entry.right[1], entry.right[2], entry.right[3]
+                    local rCollY = hEntry.right
+                    if rCollY ~= nil then
+                        rVizY = rCollY + vizOffset
+                        if prevRightX ~= nil then
+                            siloAssistDrawing:addLine(prevRightX, prevRightY, prevRightZ,
+                                rx, rVizY, rz, 1, 0.6, 0, LINE_SCALE)
+                        end
+                        prevRightX, prevRightY, prevRightZ = rx, rVizY, rz
+                        siloAssistDrawing:addSmallSphere(rx, rVizY, rz, 1, 0.6, 0)
+                        siloAssistDrawing:addLine(rx, rCollY, rz, rx, rVizY, rz, 0.7, 0.3, 0, LINE_SCALE)
+
+                        -- Track last center point for LR connection line
+                        if lCollY ~= nil and lVizY ~= nil then
+                            lastCenterX = (lx + rx) * 0.5
+                            lastCenterY = (lVizY + rVizY) * 0.5
+                            lastCenterZ = (lz + rz) * 0.5
+                        end
+                    end
+                end
+            end
         end
-        prevSurfaceX, prevSurfaceY, prevSurfaceZ = sx, surfaceY, sz
 
-        -- Horizontal cross: + marker at sample position on surface
-        local crossSize = 0.3
-        drawLine(sx - crossSize, surfaceY, sz, sx + crossSize, surfaceY, sz, 0, 1, 0, 1)
-        drawLine(sx, surfaceY, sz - crossSize, sx, surfaceY, sz + crossSize, 0, 1, 0, 1)
+        -- LR point (gold, bigger sphere)
+        local lrPos = siloAssistHeightController.longRangeWorldPos
+        if lrPos ~= nil then
+            local lx, ly, lz = lrPos[1], lrPos[2], lrPos[3]
+            local lrSurfaceY = DensityMapHeightUtil.getHeightAtWorldPos(lx, ly, lz)
+            local lrVizY = lrSurfaceY + vizOffset
 
-        -- Vertical line from sample point down to fill surface
-        if fillH > 0.05 then
-            drawLine(sx, sy, sz, sx, surfaceY, sz, 0, 0.5, 0, 0.5)
+            -- Connect from last C center to LR
+            if lastCenterX ~= nil then
+                siloAssistDrawing:addLine(lastCenterX, lastCenterY, lastCenterZ, lx, lrVizY, lz, 1, 0.8, 0, LINE_SCALE)
+            end
+
+            -- Sphere marker, bigger than C spheres
+            siloAssistDrawing:addSphere(lx, lrVizY, lz, LR_SPHERE_SCALE, 1, 0.8, 0, 1)
+
+            -- Vertical line
+            siloAssistDrawing:addLine(lx, lrSurfaceY, lz, lx, lrVizY, lz, 0.6, 0.5, 0, LINE_SCALE)
+        end
+    end)
+    if not ok then
+        siloAssistDebug.log("HUD", "drawSurfaceSamples error: " .. tostring(err))
+    end
+end
+
+---------------------------------------------------------------------
+-- Draw 3D TopoMap grid (debug mode only)
+-- Cells colored by deviation: green=avg, red=too high,
+-- blue=too low. Small sphere at each cell center.
+---------------------------------------------------------------------
+function siloAssistHud:drawTopoMap()
+    if siloAssistTopoMap.rows == 0 then
+        return
+    end
+
+    local tm = siloAssistTopoMap
+    local stats = tm.lastStats or {}
+    local avg = stats.avg or 0
+    local tolerance = siloAssistConfig.TOPO_MAP_DONE_TOLERANCE
+    local vizOffset = 0.5
+    local LINE_SCALE = 1.0
+
+    local ok, err = pcall(function()
+        for r = 1, tm.rows do
+            for c = 1, tm.cols do
+                local cell = tm.grid[r][c]
+                if cell.fillHeight ~= nil then
+                    local u = (r - 0.5) * tm.cellSize
+                    local v = (c - 0.5) * tm.cellSize
+                    local x = tm.origin.x + tm.axisH.x * u + tm.axisW.x * v
+                    local z = tm.origin.z + tm.axisH.z * u + tm.axisW.z * v
+
+                    local surfaceY = DensityMapHeightUtil.getHeightAtWorldPos(x, 0, z)
+                    if surfaceY == nil then
+                        surfaceY = 0
+                    end
+                    local vizY = surfaceY + vizOffset
+
+                    -- Color by deviation: red = too high, blue = too low, green = avg
+                    local dev = cell.fillHeight - avg
+                    local cr, cg, cb
+                    if math.abs(dev) < tolerance then
+                        cr, cg, cb = 0.2, 0.8, 0.2
+                    elseif dev > 0 then
+                        local intensity = math.min(math.abs(dev) / (tolerance * 4), 1)
+                        cr = 0.9
+                        cg = 0.5 * (1 - intensity)
+                        cb = 0.2
+                    else
+                        local intensity = math.min(math.abs(dev) / (tolerance * 4), 1)
+                        cr = 0.2
+                        cg = 0.5 * (1 - intensity)
+                        cb = 0.9
+                    end
+
+                    siloAssistDrawing:addSmallSphere(x, vizY, z, cr, cg, cb)
+
+                    siloAssistDrawing:addLine(x, surfaceY, z, x, vizY, z,
+                        cr * 0.5, cg * 0.5, cb * 0.5, LINE_SCALE)
+                end
+            end
+        end
+    end)
+    if not ok then
+        siloAssistDebug.log("HUD", "drawTopoMap error: " .. tostring(err))
+    end
+end
+
+---------------------------------------------------------------------
+-- Profile chart page
+---------------------------------------------------------------------
+function siloAssistHud:renderProfileChart(x, y, w, m, hH, fH, lH, contentH, fFooter, fSmall)
+    local hc = siloAssistHeightController
+    if hc == nil then return end
+    local ch = hc.collisionSampleHeights
+    if ch == nil or ch[1] == nil then return end
+
+    local s = {}
+    for i = 1, 5 do
+        if ch[i] ~= nil and ch[i].leftFill ~= nil and ch[i].rightFill ~= nil then
+            s[i] = (ch[i].leftFill + ch[i].rightFill) * 0.5
         end
     end
+    if s[1] == nil then return end
+
+    local chartW = w - 2 * m
+    local profileW = chartW * 0.80
+    local lrW = chartW * 0.15
+    local gap = chartW * 0.05
+    local chartX = x + m
+
+    local barW = profileW / 5
+    local subW = barW / 3
+    local lrBarW = lrW
+
+    local chartBottom = y + fH + lH * 0.5
+    local chartTop = y + fH + contentH - lH * 0.5
+    local chartH = chartTop - chartBottom
+    if chartH <= 2 * lH then return end
+
+    local target = hc.lastTargetHeightAboveGround
+    local hasTarget = target ~= nil
+    target = target or 0
+    local maxH = math.max(siloAssistConfig.SILO_MAX_HEIGHT_M, 0.1)
+    local deadband = siloAssistConfig.HEIGHT_DEADBAND or 0.05
+
+    local function barColor(val)
+        if not hasTarget then return 0.2, 0.8, 0.2 end
+        if val > target + deadband then return 1, 0.2, 0.2 end
+        if val < target - deadband then return 0.2, 0.3, 1 end
+        return 0.2, 0.8, 0.2
+    end
+
+    for i = 1, 5 do
+        local baseX = chartX + (i - 1) * barW
+        local centerVal = s[i] or 0
+        local leftVal = (ch[i] and ch[i].leftFill) or 0
+        local rightVal = (ch[i] and ch[i].rightFill) or 0
+
+        for sub = 1, 3 do
+            local val = sub == 1 and leftVal or (sub == 2 and centerVal or rightVal)
+            local ratio = math.min(val / maxH, 1)
+            local barHeight = ratio * chartH
+            local r, g, b = barColor(val)
+            local idx = (i - 1) * 3 + sub
+            local ov = siloAssistHud.profileBars[idx]
+            ov:setPosition(baseX + (sub - 1) * subW, chartBottom)
+            ov:setDimension(subW, barHeight)
+            ov:setColor(r, g, b, 0.8)
+            ov:render()
+        end
+    end
+
+    -- LR bar (6th, separated)
+    local lrX = chartX + profileW + gap
+    local lrVal = hc.longRangeFillHeight or 0
+    local lrRatio = math.min(lrVal / maxH, 1)
+    local lrBarHeight = lrRatio * chartH
+    local lrDetected = hc.longRangeFillDetected
+    siloAssistHud.profileLrBar:setPosition(lrX, chartBottom)
+    siloAssistHud.profileLrBar:setDimension(lrBarW, lrBarHeight)
+    siloAssistHud.profileLrBar:setColor(lrDetected and 0.2 or 0.3, lrDetected and 0.3 or 0.3, lrDetected and 0.8 or 0.3, 0.8)
+    siloAssistHud.profileLrBar:render()
+
+    -- Target line (white)
+    if hasTarget then
+        local targetRatio = math.min(target / maxH, 1)
+        local targetY = chartBottom + targetRatio * chartH
+        siloAssistHud.profileTargetLine:setPosition(chartX, targetY)
+        siloAssistHud.profileTargetLine:setDimension(profileW, 0.003)
+        siloAssistHud.profileTargetLine:setColor(1, 1, 1, 0.6)
+        siloAssistHud.profileTargetLine:render()
+    end
+
+    -- Blade height line (green)
+    local bladeH = hc.lastRaycastGroundDistance
+    if bladeH ~= nil then
+        local bladeRatio = math.min(bladeH / maxH, 1)
+        local bladeY = chartBottom + bladeRatio * chartH
+        siloAssistHud.profileBladeLine:setPosition(chartX, bladeY)
+        siloAssistHud.profileBladeLine:setDimension(profileW, 0.002)
+        siloAssistHud.profileBladeLine:setColor(0, 1, 0, 0.8)
+        siloAssistHud.profileBladeLine:render()
+    end
+
+    -- Center values text (CL+CR mean in cm)
+    local function cm(v)
+        if v == nil or v <= 0 then return " 0" end
+        return string.format("%2.0f", v * 100)
+    end
+    local valStr = string.format("%s %s %s %s %s",
+        cm(s[1]), cm(s[2]), cm(s[3]), cm(s[4]), cm(s[5]))
+
+    local valY = y + fH + lH * 0.25
+    setTextColor(0.7, 0.7, 0.7, 0.9)
+    setTextAlignment(RenderText.ALIGN_LEFT)
+    renderText(chartX, valY, fSmall, valStr .. " cm")
+
+    -- LR label
+    local lrLabel = lrDetected and "LR: J" or "LR: N"
+    setTextColor(lrDetected and 0.2 or 0.5, lrDetected and 0.3 or 0.5, lrDetected and 0.8 or 0.5, 0.9)
+    setTextAlignment(RenderText.ALIGN_LEFT)
+    renderText(lrX, valY, fSmall, lrLabel)
 end
 
 ---------------------------------------------------------------------
