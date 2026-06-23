@@ -66,6 +66,8 @@ siloAssistHeightController.longRangeWorldPos = nil
 -- Exit ramp state
 siloAssistHeightController.exitRampActive = false
 siloAssistHeightController.exitRampProgress = 0
+siloAssistHeightController.exitRampStartHeight = nil  -- frozen blade height at ramp start
+siloAssistHeightController.exitRampEffectiveMeters = nil  -- actual ramp length used (capped)
 
 ---------------------------------------------------------------------
 -- Reset
@@ -109,6 +111,8 @@ function siloAssistHeightController.reset()
     siloAssistHeightController.longRangeWorldPos = nil
     siloAssistHeightController.exitRampActive = false
     siloAssistHeightController.exitRampProgress = 0
+    siloAssistHeightController.exitRampStartHeight = nil
+    siloAssistHeightController.exitRampEffectiveMeters = nil
     siloAssistHeightController._lastBladeWorldPos = nil
     siloAssistHeightController._lastBladeVy = nil
     siloAssistHeightController._buryTiltActive = false
@@ -324,6 +328,15 @@ end
 function siloAssistHeightController.calcDriveThroughTarget(progress, fillHeight)
     local config = siloAssistConfig
     local heightOffset = siloAssistVehicleState.getHeightOffset()
+
+    -- Exit ramp: freeze height at start-of-ramp value. Tilt does the emptying.
+    if siloAssistHeightController.exitRampActive
+        and siloAssistHeightController.exitRampStartHeight ~= nil then
+        siloAssistHeightController.lastEffectiveRampStart = 0
+        siloAssistHeightController.lastEffectiveRampEnd = 1
+        return siloAssistHeightController.exitRampStartHeight
+    end
+
     local densityH = math.max(
         siloAssistSiloDetector.densityFillHeightAtBlade or 0,
         siloAssistSiloDetector.densityFillHeightAtVehicle or 0)
@@ -344,10 +357,6 @@ function siloAssistHeightController.calcDriveThroughTarget(progress, fillHeight)
     if progress < rampStart then
         local rampProgress = progress / rampStart
         result = groundOffset + (middleHeight - groundOffset) * rampProgress
-    elseif progress > rampEnd then
-        local rampUp = (progress - rampEnd) / (1.0 - rampEnd)
-        local exitHeight = middleHeight + config.EXIT_RAMP_HEIGHT_ADD + fillHeight * config.EXIT_RAMP_HEIGHT_FILL_FACTOR
-        result = middleHeight + (exitHeight - middleHeight) * rampUp
     else
         result = middleHeight
     end
@@ -378,16 +387,16 @@ function siloAssistHeightController.calcWedgeTarget(progress, fillHeight)
     local autoOffset = offsetBase * config.AUTO_FILL_OFFSET_FACTOR
     local effectiveOffset = math.max(heightOffset + autoOffset, config.MIN_HEIGHT_ABOVE_FILL)
 
+    -- Exit ramp: freeze height at start-of-ramp value. Tilt does the emptying.
+    if siloAssistHeightController.exitRampActive
+        and siloAssistHeightController.exitRampStartHeight ~= nil then
+        return siloAssistHeightController.exitRampStartHeight
+    end
+
     local siloLength = math.max(siloAssistSiloDetector.siloLength or 1, 1)
     local rampEnd = math.max(1 - math.min(config.EXIT_RAMP_METERS / siloLength, 0.5), 0.5)
 
     local wedgeTarget = fillHeight + (1.0 - progress) * currentWedgeHeight + effectiveOffset
-
-    if progress > rampEnd then
-        local rampUp = (progress - rampEnd) / (1.0 - rampEnd)
-        local exitHeight = wedgeTarget + config.EXIT_RAMP_HEIGHT_ADD + fillHeight * config.EXIT_RAMP_HEIGHT_FILL_FACTOR
-        wedgeTarget = wedgeTarget + (exitHeight - wedgeTarget) * rampUp
-    end
 
     return wedgeTarget
 end

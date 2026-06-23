@@ -1,6 +1,6 @@
 siloAssistConfig = {}
 
-siloAssistConfig.VERSION = "0.3.2"
+siloAssistConfig.VERSION = "0.4.0"
 
 -- Debug
 siloAssistConfig.DEBUG = false
@@ -15,11 +15,11 @@ siloAssistConfig.MODES = {
 
 -- Drive-through ramp lengths in meters (converted to progress % by silo length)
 siloAssistConfig.ENTRY_RAMP_METERS = 12.0
-siloAssistConfig.EXIT_RAMP_METERS = 8.0
+siloAssistConfig.EXIT_RAMP_METERS = 6.0
+siloAssistConfig.EXIT_RAMP_METERS_MAX = 10.0  -- hard cap (safety for very long silos)
 
--- Exit ramp: raise blade + tilt backward to empty material before leaving silo
-siloAssistConfig.EXIT_RAMP_HEIGHT_ADD = 0.3
-siloAssistConfig.EXIT_RAMP_HEIGHT_FILL_FACTOR = 0.5
+-- Exit ramp: freeze blade height at start-of-ramp value + tilt backward to
+-- empty material before leaving silo. No height raise/lower — tilt does the work.
 siloAssistConfig.EXIT_RAMP_TILT_MAX_DEG = 20
 
 -- Minimum absolute height above fill (always at least 20cm above fill)
@@ -89,7 +89,6 @@ siloAssistConfig.PRE_ENTRY_DISTANCE = 10.0
 -- Long-range entry/exit detection (10m ahead)
 siloAssistConfig.LONG_RANGE_SAMPLE_DIST = 10.0
 siloAssistConfig.LONG_RANGE_FILL_THRESHOLD = 0.05
-siloAssistConfig.EXIT_RAMP_DIST = 10.0
 
 -- Shovel/dump mode
 siloAssistConfig.DUMP_HEIGHT_OFFSET = 1.5

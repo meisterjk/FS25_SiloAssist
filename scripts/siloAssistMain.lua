@@ -242,30 +242,52 @@ function siloAssist:update(dt)
     local config = siloAssistConfig
     local rampEnd = math.max(1 - math.min(config.EXIT_RAMP_METERS / siloLength, 0.5), 0.5)
 
+    -- Exit ramp length (meters), capped to EXIT_RAMP_METERS_MAX as safety
+    local exitRampMeters = math.min(
+        config.EXIT_RAMP_METERS,
+        config.EXIT_RAMP_METERS_MAX or config.EXIT_RAMP_METERS)
+
     if exitRampActive or (inSilo and not fillAhead and siloProgress > rampEnd) then
         if not exitRampActive then
             local hc = siloAssistHeightController
+            -- Snapshot: freeze blade height at start of ramp.
+            -- Prefer last computed target, fall back to measured blade distance.
+            local startH = hc.lastTargetHeightAboveGround
+            if startH == nil then
+                startH = hc.lastRaycastGroundDistance or 0
+            end
             hc.exitRampActive = true
             hc.exitRampProgress = 0
-            siloAssistDebug.log("Main", "Exit ramp START: prog=" .. string.format("%.3f", siloProgress))
+            hc.exitRampStartHeight = startH
+            hc.exitRampEffectiveMeters = exitRampMeters
+            siloAssistDebug.log("Main", string.format(
+                "Exit ramp START: prog=%.3f frozenHeight=%.3fm rampLen=%.1fm",
+                siloProgress, startH, exitRampMeters))
         end
         local hc = siloAssistHeightController
         local speedMs = math.max(vehicle:getLastSpeed() / 3.6, 0.1)
         hc.exitRampProgress = hc.exitRampProgress + speedMs * dt / 1000
-        local rampProg = math.min(hc.exitRampProgress / config.EXIT_RAMP_DIST, 1)
+        local rampLen = hc.exitRampEffectiveMeters or exitRampMeters
+        local rampProg = math.min(hc.exitRampProgress / rampLen, 1)
         local exitTiltDeg = config.SHIELD_TILT_DEG + (config.EXIT_RAMP_TILT_MAX_DEG - config.SHIELD_TILT_DEG) * rampProg
         siloAssistTiltController.forceTilt(vehicle, exitTiltDeg)
-        siloAssistDebug.logThrottled("Main", "exitRampTilt", string.format("prog=%.3f tilt=%.1f°", rampProg, exitTiltDeg))
+        siloAssistDebug.logThrottled("Main", "exitRampTilt", string.format(
+            "prog=%.3f tilt=%.1f° frozenH=%.3f", rampProg, exitTiltDeg,
+            hc.exitRampStartHeight or -1))
     elseif not inSilo and fillAhead then
         siloAssistTiltController.forceTilt(vehicle, 0)
         if siloAssistHeightController.exitRampActive then
             siloAssistHeightController.exitRampActive = false
             siloAssistHeightController.exitRampProgress = 0
+            siloAssistHeightController.exitRampStartHeight = nil
+            siloAssistHeightController.exitRampEffectiveMeters = nil
         end
     else
         if siloAssistHeightController.exitRampActive then
             siloAssistHeightController.exitRampActive = false
             siloAssistHeightController.exitRampProgress = 0
+            siloAssistHeightController.exitRampStartHeight = nil
+            siloAssistHeightController.exitRampEffectiveMeters = nil
         end
         if siloAssistTiltController.forceTiltActive then
             siloAssistTiltController.clearForceTilt()
@@ -288,6 +310,8 @@ function siloAssist:update(dt)
         if siloAssistHeightController.exitRampActive then
             siloAssistHeightController.exitRampActive = false
             siloAssistHeightController.exitRampProgress = 0
+            siloAssistHeightController.exitRampStartHeight = nil
+            siloAssistHeightController.exitRampEffectiveMeters = nil
         end
         if siloAssistTiltController.forceTiltActive then
             siloAssistTiltController.clearForceTilt()
