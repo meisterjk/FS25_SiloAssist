@@ -26,6 +26,20 @@ function siloAssistTiltController.reset()
 end
 
 ---------------------------------------------------------------------
+-- Base tilt angle depending on silo mode (dispatches to mode modules).
+---------------------------------------------------------------------
+function siloAssistTiltController.getBaseTiltDeg()
+    local mode = siloAssistVehicleState.getSiloMode()
+    if mode == "wedge" then
+        return siloAssistModeWedge.getBaseTiltDeg()
+    elseif mode == "smooth" then
+        return siloAssistModeSmooth.getBaseTiltDeg()
+    else
+        return siloAssistModePush.getBaseTiltDeg()
+    end
+end
+
+---------------------------------------------------------------------
 -- Update: called every frame when assist is active
 ---------------------------------------------------------------------
 ---------------------------------------------------------------------
@@ -40,6 +54,8 @@ function siloAssistTiltController.forceTilt(vehicle, targetDeg)
         siloAssistTiltController.applyTilt3Point(siloAssistToolDetection.toolObject, targetDeg)
     elseif siloAssistToolDetection.controlType == "cylindered" then
         siloAssistTiltController.applyTiltCylindered(targetDeg)
+    elseif siloAssistToolDetection.controlType == "attacherJoints" then
+        -- No tilt control for direct attacherJoints (compactor)
     end
 end
 
@@ -62,6 +78,8 @@ function siloAssistTiltController.update(vehicle, dt)
             siloAssistTiltController.applyTilt3Point(siloAssistToolDetection.toolObject, 0)
         elseif siloAssistToolDetection.controlType == "cylindered" then
             siloAssistTiltController.applyTiltCylindered(0)
+        elseif siloAssistToolDetection.controlType == "attacherJoints" then
+            -- No tilt control for direct attacherJoints
         end
         return
     end
@@ -73,13 +91,15 @@ function siloAssistTiltController.update(vehicle, dt)
             siloAssistTiltController.applyTilt3Point(siloAssistToolDetection.toolObject, deg)
         elseif siloAssistToolDetection.controlType == "cylindered" then
             siloAssistTiltController.applyTiltCylindered(deg)
+        elseif siloAssistToolDetection.controlType == "attacherJoints" then
+            -- No tilt control for direct attacherJoints
         end
         return
     end
 
     local config = siloAssistConfig
     local vehiclePitchDeg = siloAssistHeightController.vehiclePitchDeg or 0
-    local pitchFactor = siloAssistToolDetection.isFrontAttached and 1 or -1
+    local pitchFactor = siloAssistToolDetection.isFrontAttached and -1 or 1
 
     -- Auto-tilt: degrees = fill height * AUTO_TILT_FACTOR (e.g. 2.5m * 4 = 10°)
     local currentStagedFill = siloAssistSiloDetector.stagedFillHeight or 0
@@ -113,8 +133,15 @@ function siloAssistTiltController.update(vehicle, dt)
         tostring(isSaturated), heightDiff
     ))
 
-    local targetTiltDeg = config.SHIELD_TILT_DEG + siloAssistVehicleState.getTiltOffset()
-        + autoTilt + vehiclePitchDeg * pitchFactor + siloAssistTiltController.saturationTilt
+    local baseTilt = siloAssistTiltController.getBaseTiltDeg()
+    local targetTiltDeg
+    local mode = siloAssistVehicleState.getSiloMode()
+    if mode == "wedge" then
+        targetTiltDeg = baseTilt + siloAssistVehicleState.getTiltOffset()
+    else
+        targetTiltDeg = baseTilt + siloAssistVehicleState.getTiltOffset()
+            + autoTilt + vehiclePitchDeg * pitchFactor + siloAssistTiltController.saturationTilt
+    end
     targetTiltDeg = math.clamp(targetTiltDeg, config.TILT_MIN, config.TILT_MAX)
 
     local hysteresis = config.SHIELD_TILT_HYSTERESIS_DEG
@@ -141,6 +168,8 @@ function siloAssistTiltController.update(vehicle, dt)
         siloAssistTiltController.applyTilt3Point(siloAssistToolDetection.toolObject, targetTiltDeg)
     elseif siloAssistToolDetection.controlType == "cylindered" then
         siloAssistTiltController.applyTiltCylindered(targetTiltDeg)
+    elseif siloAssistToolDetection.controlType == "attacherJoints" then
+        -- No tilt control for direct attacherJoints (compactor)
     end
 end
 
@@ -248,6 +277,8 @@ function siloAssistTiltController.resetTilt()
                 true
             )
         end
+    elseif siloAssistToolDetection.controlType == "attacherJoints" then
+        -- No tilt control for direct attacherJoints
     end
 end
 
@@ -263,5 +294,7 @@ function siloAssistTiltController.fullRetractTilt()
         siloAssistTiltController.applyTilt3Point(siloAssistToolDetection.toolObject, targetDeg)
     elseif siloAssistToolDetection.controlType == "cylindered" then
         siloAssistTiltController.applyTiltCylindered(targetDeg)
+    elseif siloAssistToolDetection.controlType == "attacherJoints" then
+        -- No tilt control for direct attacherJoints
     end
 end

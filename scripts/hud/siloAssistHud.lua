@@ -62,8 +62,7 @@ siloAssistHud.plusOv = nil
 siloAssistHud.minusOv = nil
 siloAssistHud.tiltPlusOv = nil
 siloAssistHud.tiltMinusOv = nil
-siloAssistHud.followPlusOv = nil
-siloAssistHud.followMinusOv = nil
+
 siloAssistHud.checkOvUnchecked = nil
 siloAssistHud.checkOvChecked = nil
 siloAssistHud.switchOffOv = nil
@@ -99,12 +98,8 @@ siloAssistHud._minusBtn = nil
 siloAssistHud._plusBtn = nil
 siloAssistHud._tiltMinusBtn = nil
 siloAssistHud._tiltPlusBtn = nil
-siloAssistHud._followMinusBtn = nil
-siloAssistHud._followPlusBtn = nil
-siloAssistHud._lookaheadMinusBtn = nil
-siloAssistHud._lookaheadPlusBtn = nil
-siloAssistHud._topoGainMinusBtn = nil
-siloAssistHud._topoGainPlusBtn = nil
+siloAssistHud._compactorBtn = nil
+
 siloAssistHud._toggleBtn = nil
 
 ---------------------------------------------------------------------
@@ -146,12 +141,7 @@ function siloAssistHud:init()
     siloAssistHud.minusOv = makeOv(P .. ".iconMinus")
     siloAssistHud.tiltPlusOv = makeOv(P .. ".iconPlus")
     siloAssistHud.tiltMinusOv = makeOv(P .. ".iconMinus")
-    siloAssistHud.followPlusOv = makeOv(P .. ".iconPlus")
-    siloAssistHud.followMinusOv = makeOv(P .. ".iconMinus")
-    siloAssistHud.lookaheadPlusOv = makeOv(P .. ".iconPlus")
-    siloAssistHud.lookaheadMinusOv = makeOv(P .. ".iconMinus")
-    siloAssistHud.topoGainPlusOv = makeOv(P .. ".iconPlus")
-    siloAssistHud.topoGainMinusOv = makeOv(P .. ".iconMinus")
+
     siloAssistHud.checkOvUnchecked = makeOv(P .. ".checkboxUnchecked")
     siloAssistHud.checkOvChecked = makeOv(P .. ".checkboxChecked")
     siloAssistHud.switchOffOv = makeOv(P .. ".switchOff")
@@ -216,16 +206,16 @@ function siloAssistHud:draw()
     siloAssistHud._checkBtn = nil
     siloAssistHud._prevBtn = nil
     siloAssistHud._nextBtn = nil
-    siloAssistHud._modeDtBtn = nil
+    siloAssistHud._modePushBtn = nil
+    siloAssistHud._modeSmoothBtn = nil
     siloAssistHud._modeWedgeBtn = nil
+    siloAssistHud._modeDtBtn = nil
     siloAssistHud._minusBtn = nil
     siloAssistHud._plusBtn = nil
     siloAssistHud._tiltMinusBtn = nil
     siloAssistHud._tiltPlusBtn = nil
-    siloAssistHud._followMinusBtn = nil
-    siloAssistHud._followPlusBtn = nil
-    siloAssistHud._topoGainMinusBtn = nil
-    siloAssistHud._topoGainPlusBtn = nil
+    siloAssistHud._compactorBtn = nil
+
 siloAssistHud._toggleBtn = nil
 siloAssistHud._debugLinesBtn = nil
 siloAssistHud._debugDebugBtn = nil
@@ -242,7 +232,7 @@ siloAssistHud._debugLogBtn = nil
     local navBtnW, navBtnH = getNormalizedScreenValues(siloAssistHud.NAV_BTN_PX, siloAssistHud.NAV_BTN_PX)
     local offBtnW, offBtnH = getNormalizedScreenValues(siloAssistHud.OFFSET_BTN_PX, siloAssistHud.OFFSET_BTN_PX)
     local tiltBtnW, tiltBtnH = getNormalizedScreenValues(siloAssistHud.TILT_BTN_PX, siloAssistHud.TILT_BTN_PX)
-    local followBtnW, followBtnH = getNormalizedScreenValues(siloAssistHud.FOLLOW_BTN_PX, siloAssistHud.FOLLOW_BTN_PX)
+
     local switchW, switchH = getNormalizedScreenValues(siloAssistHud.SWITCH_W_PX, siloAssistHud.SWITCH_H_PX)
 
     local uiScale = g_gameSettings:getValue("uiScale") or 1.0
@@ -346,7 +336,9 @@ siloAssistHud._debugLogBtn = nil
 
         if line.type == "checkboxes" then
             local currentMode = siloAssistVehicleState.getSiloMode()
-            local isDriveThrough = currentMode == "driveThrough"
+            local isPush = currentMode == "push"
+            local isSmooth = currentMode == "smooth"
+            local isWedge = currentMode == "wedge"
             local cbY = rowY + siloAssistHud:centerY(lH, checkH)
             local textOfsY = rowY + siloAssistHud:centerY(lH, fDefault)
 
@@ -354,34 +346,36 @@ siloAssistHud._debugLogBtn = nil
             setTextAlignment(RenderText.ALIGN_LEFT)
             renderText(x + m, textOfsY, fDefault, g_i18n:getText("sa_mode") .. ":")
 
+            local pushText = g_i18n:getText("SA_MODE_PUSH")
+            local smoothText = g_i18n:getText("SA_MODE_SMOOTH")
             local wedgeText = g_i18n:getText("SA_MODE_WEDGE")
-            local dtText = g_i18n:getText("SA_MODE_DRIVETHROUGH")
-            local dtCbX = x + w - m - checkW - m - getTextWidth(fDefault, wedgeText) - m - checkW - m - getTextWidth(fDefault, dtText)
-            local dtLabelX = dtCbX + checkW + m
-            local wedgeCbX = x + w - m - checkW - m - getTextWidth(fDefault, wedgeText)
-            local wedgeLabelX = wedgeCbX + checkW + m
 
-            local dtOv = isDriveThrough and siloAssistHud.checkOvChecked or siloAssistHud.checkOvUnchecked
-            dtOv:setPosition(dtCbX, cbY)
-            dtOv:setDimension(checkW, checkH)
-            dtOv:setColor(1, 1, 1, 0.95)
-            dtOv:render()
-            siloAssistHud._modeDtBtn = {x = dtCbX, y = rowY, w = checkW + m + getTextWidth(fDefault, dtText), h = lH}
-
-            setTextColor(1, 1, 1, 0.9)
-            setTextAlignment(RenderText.ALIGN_LEFT)
-            renderText(dtLabelX, textOfsY, fDefault, dtText)
-
-            local wOv = (not isDriveThrough) and siloAssistHud.checkOvChecked or siloAssistHud.checkOvUnchecked
-            wOv:setPosition(wedgeCbX, cbY)
-            wOv:setDimension(checkW, checkH)
-            wOv:setColor(1, 1, 1, 0.95)
-            wOv:render()
-            siloAssistHud._modeWedgeBtn = {x = wedgeCbX, y = rowY, w = checkW + m + getTextWidth(fDefault, wedgeText), h = lH}
-
-            setTextColor(1, 1, 1, 0.9)
-            setTextAlignment(RenderText.ALIGN_LEFT)
-            renderText(wedgeLabelX, textOfsY, fDefault, wedgeText)
+            -- Layout: 3 checkboxes from right to left
+            local margin = getTextWidth(fDefault, "  ")
+            local curX = x + w - m
+            local btns = {
+                { key = "wedge",  label = wedgeText,  checked = isWedge,  btn = "_modeWedgeBtn" },
+                { key = "smooth", label = smoothText, checked = isSmooth, btn = "_modeSmoothBtn" },
+                { key = "push",   label = pushText,   checked = isPush,   btn = "_modePushBtn" },
+            }
+            for idx = 1, 3 do
+                local b = btns[idx]
+                local labelW = getTextWidth(fDefault, b.label)
+                local cbPosX = curX - checkW - m - labelW
+                local ov = b.checked and siloAssistHud.checkOvChecked or siloAssistHud.checkOvUnchecked
+                ov:setPosition(cbPosX, cbY)
+                ov:setDimension(checkW, checkH)
+                ov:setColor(1, 1, 1, 0.95)
+                ov:render()
+                setTextColor(1, 1, 1, 0.9)
+                setTextAlignment(RenderText.ALIGN_LEFT)
+                renderText(cbPosX + checkW + m, textOfsY, fDefault, b.label)
+                local btn = {x = cbPosX, y = rowY, w = checkW + m + labelW, h = lH}
+                if b.btn == "_modePushBtn" then siloAssistHud._modePushBtn = btn
+                elseif b.btn == "_modeSmoothBtn" then siloAssistHud._modeSmoothBtn = btn
+                elseif b.btn == "_modeWedgeBtn" then siloAssistHud._modeWedgeBtn = btn end
+                curX = cbPosX - margin
+            end
 
         elseif line.type == "debugCheckboxes" then
             local cbY = rowY + siloAssistHud:centerY(lH, checkH)
@@ -508,137 +502,7 @@ siloAssistHud._debugLogBtn = nil
             setTextAlignment(RenderText.ALIGN_LEFT)
             renderText(valX, textY, fDefault, tiltStr)
 
-        elseif line.type == "follow" then
-            local labelStr = line.text
-            setTextColor(1, 1, 1, 0.9)
-            setTextAlignment(RenderText.ALIGN_LEFT)
-            renderText(x + m, textY, fDefault, labelStr)
 
-            local followVal = siloAssistVehicleState.getFollowFactor()
-            local followStr = string.format("%.1f", followVal)
-            local followTextW = getTextWidth(fDefault, followStr)
-
-            local plusX = x + w - m - followBtnW
-            local valX = plusX - m - followTextW
-            local minusX = valX - m - followBtnW
-
-            siloAssistHud._followMinusBtn = {x = minusX, y = rowY, w = followBtnW, h = lH}
-            siloAssistHud._followPlusBtn = {x = plusX, y = rowY, w = followBtnW, h = lH}
-
-            local hovMinus = siloAssistHud.mouseX >= minusX
-                and siloAssistHud.mouseX <= minusX + followBtnW
-                and siloAssistHud.mouseY >= rowY
-                and siloAssistHud.mouseY <= rowY + lH
-            local hovPlus = siloAssistHud.mouseX >= plusX
-                and siloAssistHud.mouseX <= plusX + followBtnW
-                and siloAssistHud.mouseY >= rowY
-                and siloAssistHud.mouseY <= rowY + lH
-
-            local colMinus = hovMinus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
-            local colPlus = hovPlus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
-
-            local btnY = rowY + siloAssistHud:centerY(lH, followBtnH)
-            siloAssistHud.followMinusOv:setPosition(minusX, btnY)
-            siloAssistHud.followMinusOv:setDimension(followBtnW, followBtnH)
-            siloAssistHud.followMinusOv:setColor(unpack(colMinus))
-            siloAssistHud.followMinusOv:render()
-
-            siloAssistHud.followPlusOv:setPosition(plusX, btnY)
-            siloAssistHud.followPlusOv:setDimension(followBtnW, followBtnH)
-            siloAssistHud.followPlusOv:setColor(unpack(colPlus))
-            siloAssistHud.followPlusOv:render()
-
-            setTextColor(1, 1, 1, 0.9)
-            setTextAlignment(RenderText.ALIGN_LEFT)
-            renderText(valX, textY, fDefault, followStr)
-
-        elseif line.type == "lookahead" then
-            local labelStr = line.text
-            setTextColor(1, 1, 1, 0.9)
-            setTextAlignment(RenderText.ALIGN_LEFT)
-            renderText(x + m, textY, fDefault, labelStr)
-
-            local lookVal = siloAssistVehicleState.getLookaheadTime()
-            local lookStr = string.format("%.1fs", lookVal)
-            local lookTextW = getTextWidth(fDefault, lookStr)
-
-            local plusX = x + w - m - followBtnW
-            local valX = plusX - m - lookTextW
-            local minusX = valX - m - followBtnW
-
-            siloAssistHud._lookaheadMinusBtn = {x = minusX, y = rowY, w = followBtnW, h = lH}
-            siloAssistHud._lookaheadPlusBtn = {x = plusX, y = rowY, w = followBtnW, h = lH}
-
-            local hovMinus = siloAssistHud.mouseX >= minusX
-                and siloAssistHud.mouseX <= minusX + followBtnW
-                and siloAssistHud.mouseY >= rowY
-                and siloAssistHud.mouseY <= rowY + lH
-            local hovPlus = siloAssistHud.mouseX >= plusX
-                and siloAssistHud.mouseX <= plusX + followBtnW
-                and siloAssistHud.mouseY >= rowY
-                and siloAssistHud.mouseY <= rowY + lH
-
-            local colMinus = hovMinus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
-            local colPlus = hovPlus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
-
-            local btnY = rowY + siloAssistHud:centerY(lH, followBtnH)
-            siloAssistHud.lookaheadMinusOv:setPosition(minusX, btnY)
-            siloAssistHud.lookaheadMinusOv:setDimension(followBtnW, followBtnH)
-            siloAssistHud.lookaheadMinusOv:setColor(unpack(colMinus))
-            siloAssistHud.lookaheadMinusOv:render()
-
-            siloAssistHud.lookaheadPlusOv:setPosition(plusX, btnY)
-            siloAssistHud.lookaheadPlusOv:setDimension(followBtnW, followBtnH)
-            siloAssistHud.lookaheadPlusOv:setColor(unpack(colPlus))
-            siloAssistHud.lookaheadPlusOv:render()
-
-            setTextColor(1, 1, 1, 0.9)
-            setTextAlignment(RenderText.ALIGN_LEFT)
-            renderText(valX, textY, fDefault, lookStr)
-
-        elseif line.type == "topoGain" then
-            local labelStr = line.text
-            setTextColor(1, 1, 1, 0.9)
-            setTextAlignment(RenderText.ALIGN_LEFT)
-            renderText(x + m, textY, fDefault, labelStr)
-
-            local gainVal = siloAssistVehicleState.getTopoGain()
-            local gainStr = string.format("%.1f", gainVal)
-            local gainTextW = getTextWidth(fDefault, gainStr)
-
-            local plusX = x + w - m - followBtnW
-            local valX = plusX - m - gainTextW
-            local minusX = valX - m - followBtnW
-
-            siloAssistHud._topoGainMinusBtn = {x = minusX, y = rowY, w = followBtnW, h = lH}
-            siloAssistHud._topoGainPlusBtn = {x = plusX, y = rowY, w = followBtnW, h = lH}
-
-            local hovMinus = siloAssistHud.mouseX >= minusX
-                and siloAssistHud.mouseX <= minusX + followBtnW
-                and siloAssistHud.mouseY >= rowY
-                and siloAssistHud.mouseY <= rowY + lH
-            local hovPlus = siloAssistHud.mouseX >= plusX
-                and siloAssistHud.mouseX <= plusX + followBtnW
-                and siloAssistHud.mouseY >= rowY
-                and siloAssistHud.mouseY <= rowY + lH
-
-            local colMinus = hovMinus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
-            local colPlus = hovPlus and siloAssistHud.COLOR_BTN_HOVER or siloAssistHud.COLOR_BTN
-
-            local btnY = rowY + siloAssistHud:centerY(lH, followBtnH)
-            siloAssistHud.topoGainMinusOv:setPosition(minusX, btnY)
-            siloAssistHud.topoGainMinusOv:setDimension(followBtnW, followBtnH)
-            siloAssistHud.topoGainMinusOv:setColor(unpack(colMinus))
-            siloAssistHud.topoGainMinusOv:render()
-
-            siloAssistHud.topoGainPlusOv:setPosition(plusX, btnY)
-            siloAssistHud.topoGainPlusOv:setDimension(followBtnW, followBtnH)
-            siloAssistHud.topoGainPlusOv:setColor(unpack(colPlus))
-            siloAssistHud.topoGainPlusOv:render()
-
-            setTextColor(1, 1, 1, 0.9)
-            setTextAlignment(RenderText.ALIGN_LEFT)
-            renderText(valX, textY, fDefault, gainStr)
 
         elseif line.type == "miniProfile" then
             local hc = siloAssistHeightController
@@ -680,6 +544,11 @@ siloAssistHud._debugLogBtn = nil
             end
             setTextAlignment(RenderText.ALIGN_RIGHT)
             renderText(x + w - m, textY, fDefault, line.value)
+
+            -- Store clickable bounds for compactor toggle
+            if line.clickId == "compactor" then
+                siloAssistHud._compactorBtn = {x = x, y = rowY, w = w, h = lH}
+            end
 
         elseif line.type == "value" then
             if line.color then
@@ -747,6 +616,13 @@ siloAssistHud._debugLogBtn = nil
     setTextAlignment(RenderText.ALIGN_LEFT)
 end
 
+function siloAssistHud:triggerPushScanIfInSilo()
+    if siloAssistSiloDetector.isInSilo and siloAssistSiloDetector.currentSilo ~= nil then
+        siloAssistHeightController.scanFullSilo(
+            siloAssistSiloDetector.currentSilo, siloAssistSiloDetector.currentSiloArea)
+    end
+end
+
 ---------------------------------------------------------------------
 -- Build content lines per page
 ---------------------------------------------------------------------
@@ -773,9 +649,26 @@ function siloAssistHud.buildSetupPage(lines)
     table.insert(lines, { type = "debugCheckboxes" })
     table.insert(lines, { type = "offset", text = g_i18n:getText("sa_height") .. ":" })
     table.insert(lines, { type = "tilt", text = g_i18n:getText("sa_tilt") .. ":" })
-    table.insert(lines, { type = "follow", text = g_i18n:getText("sa_follow") .. ":" })
-    table.insert(lines, { type = "lookahead", text = g_i18n:getText("sa_lookahead") .. ":" })
-    table.insert(lines, { type = "topoGain", text = "Map:" })
+
+    -- Compactor toggle: always show when a compactor is attached (even if assist is off)
+    local currentVehicle = nil
+    if g_localPlayer ~= nil then
+        currentVehicle = g_localPlayer:getCurrentVehicle()
+    end
+    local showCompactor = siloAssistToolDetection.compactorTool ~= nil
+        or siloAssistEquipmentConfig.hasCompactorAttached(currentVehicle)
+    if showCompactor then
+        local compEnabled = siloAssistVehicleState.isCompactorEnabled()
+        local compDetected = siloAssistToolDetection.compactorTool ~= nil
+            or siloAssistEquipmentConfig.hasCompactorAttached(currentVehicle)
+        local label = compDetected and "Verdichter:" or "Verdichter: (nicht erkannt)"
+        local valueStr = compEnabled and "AN" or "AUS"
+        table.insert(lines, { type = "valuePair",
+            label = label,
+            value = valueStr,
+            valueColor = compEnabled and siloAssistHud.COLOR_ACTIVE or siloAssistHud.COLOR_OFF,
+            clickId = "compactor" })
+    end
     table.insert(lines, { type = "miniProfile" })
 
     -- Fill level (always shown)
@@ -814,7 +707,27 @@ function siloAssistHud.buildSetupPage(lines)
     end
 
     -- Soll/Ist (always shown)
-    if inSilo then
+    -- Compactor status line (when compactor is present but primary is leveler/shovel)
+    if siloAssistToolDetection.compactorTool ~= nil and not siloAssistToolDetection.isCompactor then
+        local compEnabled = siloAssistVehicleState.isCompactorEnabled()
+        local lowerStr = compEnabled and (siloAssistCompactorController.isLowered and "gesenkt" or "angehoben") or "AUS"
+        local lowerColor = compEnabled
+            and (siloAssistCompactorController.isLowered and siloAssistHud.COLOR_ACTIVE or siloAssistHud.COLOR_OFF)
+            or siloAssistHud.COLOR_OFF
+        table.insert(lines, { type = "valuePair",
+            label = "Verdichter:",
+            value = lowerStr,
+            valueColor = lowerColor })
+    end
+
+    if siloAssistToolDetection.isCompactor then
+        -- Compactor-only mode: show status instead of Soll/Ist
+        local lowerStr = siloAssistCompactorController.isLowered and "gesenkt" or "angehoben"
+        table.insert(lines, { type = "valuePair",
+            label = "Verdichter:",
+            value = lowerStr,
+            valueColor = siloAssistCompactorController.isLowered and siloAssistHud.COLOR_ACTIVE or siloAssistHud.COLOR_OFF })
+    elseif inSilo then
         local bladeH = siloAssistHeightController.lastRaycastGroundDistance
         local targetH = siloAssistHeightController.lastTargetHeightAboveGround
         local bladeHStr = bladeH ~= nil and string.format("%.2fm", bladeH) or "--"
@@ -835,13 +748,16 @@ function siloAssistHud.buildSetupPage(lines)
         label = g_i18n:getText("sa_speed") .. ":",
         value = string.format("%.1f km/h %s", speed, dirStr) })
 
-    -- DUMPING/STUCK warning
+    -- DUMPING/STUCK/EXIT_RAMP warning
     if siloAssistVehicleState.getState() == config.STATE_DUMPING then
         table.insert(lines, { type = "value",
             text = g_i18n:getText("sa_dumping"), color = siloAssistHud.COLOR_WARN })
     elseif siloAssistVehicleState.getState() == config.STATE_RAISING then
+        local raiseSec = siloAssistState.stuckRaiseTimer / 1000
+        local heightAddCm = math.floor((siloAssistState.stuckHeightAdd or 0) * 100 + 0.5)
         table.insert(lines, { type = "value",
-            text = g_i18n:getText("sa_stuck"), color = siloAssistHud.COLOR_WARN })
+            text = string.format("%s (%.1fs) +%dcm", g_i18n:getText("sa_stuck"), raiseSec, heightAddCm),
+            color = siloAssistHud.COLOR_WARN })
     end
 
     -- "Silo eben!" confirmation (TopoMap done state)
@@ -869,12 +785,20 @@ function siloAssistHud.buildDebugPage(lines)
     local st = siloAssistState
     local function jn(v) return v and "J" or "N" end
 
-    -- Geschwindigkeit | Festgefahren | Schlupf | Rückwärts
+    -- Geschwindigkeit | Festgefahren | Schlupf | Rückwärts | Raise-Timer | ExitRamp
     local speed = sd.vehicleSpeed or 0
     local dirStr = st.isReversing and "<<" or ">>"
+    local raiseStr = ""
+    if siloAssistVehicleState.getState() == siloAssistConfig.STATE_RAISING then
+        raiseStr = string.format(" (%.1fs)", st.stuckRaiseTimer / 1000)
+    end
+    local exitRampStr = ""
+    if hc.exitRampActive then
+        exitRampStr = string.format(" | ExitRamp: %.1fm +%dcm", hc.exitRampProgress, math.floor((hc.exitRampHeightAdd or 0) * 100 + 0.5))
+    end
     table.insert(lines, { type = "value",
-        text = string.format("Geschw: %.1f %s | Stuck: %s",
-            speed, dirStr, jn(st.isStuck)) })
+        text = string.format("Geschw: %.1f %s | Stuck: %s%s | Slip: %s%s",
+            speed, dirStr, jn(st.isStuck), raiseStr, jn(st.wheelSlipDetected), exitRampStr) })
 
     -- Soll-Ist Differenz | Regelrichtung | Im Silo
     table.insert(lines, { type = "value",
@@ -884,7 +808,7 @@ function siloAssistHud.buildDebugPage(lines)
             jn(sd.isInSilo)) })
 
     -- CL/CR Stichproben (Füllhöhe an Schildkanten, 5 Distanzen: 1/3/5/8/10m)
-    -- S1-S5 Center-Punkte wurden entfernt, nur CL+CR bleibt
+    -- 16-Sensor-Array: CL/CM/CR (L/M/R) an 5 Distanzen: 1/3/5/8/10m + Silo-Sensor 15m
     local ch = hc.collisionSampleHeights
     local function cf(side, i)
         if ch ~= nil and ch[i] ~= nil and ch[i][side] ~= nil then
@@ -892,25 +816,27 @@ function siloAssistHud.buildDebugPage(lines)
         end
         return "--"
     end
-    -- Zeile 1: CL1/CR1 (1m) + CL2/CR2 (3m)
+    -- Zeile 1: 1m + 3m (L/M/R)
     table.insert(lines, { type = "value",
-        text = string.format("CL1:%s CR1:%s | CL2:%s CR2:%s",
-            cf("leftFill", 1), cf("rightFill", 1),
-            cf("leftFill", 2), cf("rightFill", 2)) })
-    -- Zeile 2: CL3/CR3 (5m) + CL4/CR4 (8m)
+        text = string.format("1m L:%s M:%s R:%s | 3m L:%s M:%s R:%s",
+            cf("leftFill", 1), cf("midFill", 1), cf("rightFill", 1),
+            cf("leftFill", 2), cf("midFill", 2), cf("rightFill", 2)) })
+    -- Zeile 2: 5m + 8m
     table.insert(lines, { type = "value",
-        text = string.format("CL3:%s CR3:%s | CL4:%s CR4:%s",
-            cf("leftFill", 3), cf("rightFill", 3),
-            cf("leftFill", 4), cf("rightFill", 4)) })
-    -- Zeile 3: CL5/CR5 (10m) + Kollisionshöhe unterm Schild + Median
+        text = string.format("5m L:%s M:%s R:%s | 8m L:%s M:%s R:%s",
+            cf("leftFill", 3), cf("midFill", 3), cf("rightFill", 3),
+            cf("leftFill", 4), cf("midFill", 4), cf("rightFill", 4)) })
+    -- Zeile 3: 10m + Silo-Sensor + Median + Kollisionshöhe
     local colH = hc.lastRaycastGroundDistance
     local colStr = colH ~= nil and string.format("%.2fm", colH) or "--"
     local medStr = hc.lastSurfaceTarget ~= nil and string.format("%.2f", hc.lastSurfaceTarget) or "--"
+    local siloSensorStr = hc.siloSensorFillHeight ~= nil and string.format("%.2f", hc.siloSensorFillHeight) or "--"
     table.insert(lines, { type = "value",
-        text = string.format("CL5:%s CR5:%s | Koll:%s Med:%s",
-            cf("leftFill", 5), cf("rightFill", 5), colStr, medStr) })
+        text = string.format("10m L:%s M:%s R:%s | Silo:%s | Med:%s Koll:%s",
+            cf("leftFill", 5), cf("midFill", 5), cf("rightFill", 5),
+            siloSensorStr, medStr, colStr) })
 
-    -- Profil-Typ + Vorhalt + LR + Silo
+    -- Profil-Typ + Vorhalt + LR + Silo + Push-Scan
     local lrVal = hc.longRangeFillHeight
     local lrStr = lrVal ~= nil and string.format("%.2fm", lrVal) or "--"
     local lrDetected = hc.longRangeFillDetected and "J" or "N"
@@ -919,11 +845,25 @@ function siloAssistHud.buildDebugPage(lines)
     if sd.currentSilo ~= nil then
         siloStr = string.format("%.1fx%.1fm", sd.siloLength, sd.siloWidth)
     end
-    local profileStr = string.format("%s | Vorhalt: %+.0fmm | LR: %s (%s) | %s",
-        hc._profileType or "?",
-        (hc._preemptiveHeightDiff or 0) * 1000,
-        lrStr, lrDetected, siloStr)
+    local pushScanStr = "--"
+    if hc.pushScanAvgHeight ~= nil then
+        pushScanStr = string.format("avg=%.2f med=%.2f [%.2f..%.2f] n=%d",
+            hc.pushScanAvgHeight,
+            hc.pushScanMedianHeight or 0,
+            hc.pushScanMinHeight or 0,
+            hc.pushScanMaxHeight or 0,
+            hc.pushScanCount or 0)
+    end
+    local profileStr = string.format("LR: %s (%s) | %s | PushScan: %s",
+        lrStr, lrDetected, siloStr, pushScanStr)
     table.insert(lines, { type = "value", text = profileStr })
+
+    -- Exit sensor
+    local esH = hc.exitSensorFillHeight
+    local esStr = esH ~= nil and string.format("%.2fm", esH) or "--"
+    local esDetected = hc.exitSensorFillDetected and "J" or "N"
+    table.insert(lines, { type = "value",
+        text = string.format("ExitSensor: %s (%s)", esStr, esDetected) })
 
     -- Vorderachse | Hinterachse Bodenabstand | Nickwinkel
     local function gv(v)
@@ -1033,9 +973,17 @@ function siloAssistHud:mouseEvent(posX, posY, isDown, isUp, button)
             return true
         end
 
-        if siloAssistHud:isInButton(posX, posY, siloAssistHud._modeDtBtn) then
-            if siloAssistVehicleState.getSiloMode() ~= "driveThrough" then
-                siloAssistVehicleState.setSiloMode("driveThrough")
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._modePushBtn) then
+            if siloAssistVehicleState.getSiloMode() ~= "push" then
+                siloAssistVehicleState.setSiloMode("push")
+                siloAssistHud:triggerPushScanIfInSilo()
+            end
+            return true
+        end
+
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._modeSmoothBtn) then
+            if siloAssistVehicleState.getSiloMode() ~= "smooth" then
+                siloAssistVehicleState.setSiloMode("smooth")
             end
             return true
         end
@@ -1067,33 +1015,8 @@ function siloAssistHud:mouseEvent(posX, posY, isDown, isUp, button)
             return true
         end
 
-        if siloAssistHud:isInButton(posX, posY, siloAssistHud._followMinusBtn) then
-            siloAssistConfig.adjustFollow(-siloAssistConfig.FOLLOW_STEP)
-            return true
-        end
-
-        if siloAssistHud:isInButton(posX, posY, siloAssistHud._followPlusBtn) then
-            siloAssistConfig.adjustFollow(siloAssistConfig.FOLLOW_STEP)
-            return true
-        end
-
-        if siloAssistHud:isInButton(posX, posY, siloAssistHud._lookaheadMinusBtn) then
-            siloAssistConfig.adjustLookahead(-siloAssistConfig.LOOKAHEAD_STEP)
-            return true
-        end
-
-        if siloAssistHud:isInButton(posX, posY, siloAssistHud._lookaheadPlusBtn) then
-            siloAssistConfig.adjustLookahead(siloAssistConfig.LOOKAHEAD_STEP)
-            return true
-        end
-
-        if siloAssistHud:isInButton(posX, posY, siloAssistHud._topoGainMinusBtn) then
-            siloAssistConfig.adjustTopoGain(-0.1)
-            return true
-        end
-
-        if siloAssistHud:isInButton(posX, posY, siloAssistHud._topoGainPlusBtn) then
-            siloAssistConfig.adjustTopoGain(0.1)
+        if siloAssistHud:isInButton(posX, posY, siloAssistHud._compactorBtn) then
+            siloAssistVehicleState.setCompactorEnabled(not siloAssistVehicleState.isCompactorEnabled())
             return true
         end
 
@@ -1152,30 +1075,34 @@ end
 function siloAssistHud:drawSurfaceSamples()
     local cSamples = siloAssistHeightController.collisionSamples
     local lrPos = siloAssistHeightController.longRangeWorldPos
-    if (cSamples == nil or #cSamples == 0) and lrPos == nil then
+    local siloSensorPos = siloAssistHeightController.siloSensorWorldPos
+    if (cSamples == nil or #cSamples == 0) and lrPos == nil and siloSensorPos == nil then
         return
     end
 
     local vizOffset = 2.0
     local LINE_SCALE = 1.0
-    local SPHERE_SCALE = 0.15
     local LR_SPHERE_SCALE = 0.25
     local ok, err = pcall(function()
-        -- C1-C5 edge points (cyan=left, orange=right)
-        local lastCenterX, lastCenterY, lastCenterZ
         local cHeights = siloAssistHeightController.collisionSampleHeights
+        local prevLeftX, prevLeftY, prevLeftZ
+        local prevRightX, prevRightY, prevRightZ
+        local prevMidX, prevMidY, prevMidZ
+        local lastMidX, lastMidY, lastMidZ  -- 10m mid point for silo sensor connection
+
+        -- Collect positions of the 9 far sensors (i=3,4,5 = distances 5,8,10) for average marker
+        local avgSumX, avgSumZ, avgCount = 0, 0, 0
+
         if cSamples ~= nil and cHeights ~= nil then
-            local prevLeftX, prevLeftY, prevLeftZ
-            local prevRightX, prevRightY, prevRightZ
             for i = 1, math.min(#cSamples, #cHeights) do
                 local entry = cSamples[i]
                 local hEntry = cHeights[i]
                 if entry ~= nil and hEntry ~= nil then
-                    local lVizY, rVizY
 
                     -- Left edge (cyan)
                     local lx, ly, lz = entry.left[1], entry.left[2], entry.left[3]
                     local lCollY = hEntry.left
+                    local lVizY
                     if lCollY ~= nil then
                         lVizY = lCollY + vizOffset
                         if prevLeftX ~= nil then
@@ -1190,6 +1117,7 @@ function siloAssistHud:drawSurfaceSamples()
                     -- Right edge (orange)
                     local rx, ry, rz = entry.right[1], entry.right[2], entry.right[3]
                     local rCollY = hEntry.right
+                    local rVizY
                     if rCollY ~= nil then
                         rVizY = rCollY + vizOffset
                         if prevRightX ~= nil then
@@ -1199,35 +1127,103 @@ function siloAssistHud:drawSurfaceSamples()
                         prevRightX, prevRightY, prevRightZ = rx, rVizY, rz
                         siloAssistDrawing:addSmallSphere(rx, rVizY, rz, 1, 0.6, 0)
                         siloAssistDrawing:addLine(rx, rCollY, rz, rx, rVizY, rz, 0.7, 0.3, 0, LINE_SCALE)
+                    end
 
-                        -- Track last center point for LR connection line
-                        if lCollY ~= nil and lVizY ~= nil then
-                            lastCenterX = (lx + rx) * 0.5
-                            lastCenterY = (lVizY + rVizY) * 0.5
-                            lastCenterZ = (lz + rz) * 0.5
+                    -- Mid sensor (green) — all 5 distances get a sphere + vertical line
+                    local mx, my, mz = entry.mid[1], entry.mid[2], entry.mid[3]
+                    local mCollY = hEntry.mid
+                    local mVizY
+                    if mCollY ~= nil then
+                        mVizY = mCollY + vizOffset
+                        siloAssistDrawing:addSmallSphere(mx, mVizY, mz, 0, 1, 0)
+                        siloAssistDrawing:addLine(mx, mCollY, mz, mx, mVizY, mz, 0, 0.6, 0, LINE_SCALE)
+
+                        -- Connection lines only for the 9 far sensors (i>=3 = distances 5,8,10)
+                        if i >= 3 then
+                            if prevMidX ~= nil then
+                                siloAssistDrawing:addLine(prevMidX, prevMidY, prevMidZ,
+                                    mx, mVizY, mz, 0, 0.8, 0, LINE_SCALE)
+                            end
+
+                            -- Cross-connection L -> M -> R at this distance (shows profile)
+                            if lVizY ~= nil and rVizY ~= nil then
+                                siloAssistDrawing:addLine(lx, lVizY, lz, mx, mVizY, mz, 0.5, 0.8, 0.5, LINE_SCALE)
+                                siloAssistDrawing:addLine(mx, mVizY, mz, rx, rVizY, rz, 0.5, 0.8, 0.5, LINE_SCALE)
+                            end
+
+                            -- Collect for average marker position
+                            avgSumX = avgSumX + lx + mx + rx
+                            avgSumZ = avgSumZ + lz + mz + rz
+                            avgCount = avgCount + 3
                         end
+
+                        prevMidX, prevMidY, prevMidZ = mx, mVizY, mz
+                        lastMidX, lastMidY, lastMidZ = mx, mVizY, mz
                     end
                 end
             end
         end
 
-        -- LR point (gold, bigger sphere)
+        -- Average marker: magenta sphere on median height, centered over the 9 far sensors
+        local median = siloAssistHeightController.lastSurfaceTarget
+        if median ~= nil and avgCount > 0 then
+            local avgX = avgSumX / avgCount
+            local avgZ = avgSumZ / avgCount
+            -- Use terrain height at avg position as base, add median + vizOffset
+            local baseY = DensityMapHeightUtil.getHeightAtWorldPos(avgX, 0, avgZ)
+            if baseY ~= nil then
+                local markerY = baseY + median + vizOffset
+                siloAssistDrawing:addSphere(avgX, markerY, avgZ, LR_SPHERE_SCALE, 1, 0, 1, 1)
+                siloAssistDebug.logThrottled("HUD", "avgMarker", string.format(
+                    "median=%.3f avgX=%.1f avgZ=%.1f baseY=%.2f markerY=%.2f",
+                    median, avgX, avgZ, baseY, markerY))
+            end
+        end
+
+        -- LR point (gold, bigger sphere) — now at 15m
         local lrPos = siloAssistHeightController.longRangeWorldPos
         if lrPos ~= nil then
             local lx, ly, lz = lrPos[1], lrPos[2], lrPos[3]
             local lrSurfaceY = DensityMapHeightUtil.getHeightAtWorldPos(lx, ly, lz)
             local lrVizY = lrSurfaceY + vizOffset
 
-            -- Connect from last C center to LR
-            if lastCenterX ~= nil then
-                siloAssistDrawing:addLine(lastCenterX, lastCenterY, lastCenterZ, lx, lrVizY, lz, 1, 0.8, 0, LINE_SCALE)
+            -- Connect from last mid point (10m) to LR (15m)
+            if lastMidX ~= nil then
+                siloAssistDrawing:addLine(lastMidX, lastMidY, lastMidZ, lx, lrVizY, lz, 1, 0.8, 0, LINE_SCALE)
             end
 
-            -- Sphere marker, bigger than C spheres
             siloAssistDrawing:addSphere(lx, lrVizY, lz, LR_SPHERE_SCALE, 1, 0.8, 0, 1)
-
-            -- Vertical line
             siloAssistDrawing:addLine(lx, lrSurfaceY, lz, lx, lrVizY, lz, 0.6, 0.5, 0, LINE_SCALE)
+        end
+
+        -- Silo sensor (red, 15m) — only when fill detected and height sensors active
+        if siloAssistHeightController.siloSensorFillDetected
+            and siloSensorPos ~= nil
+            and cSamples ~= nil and #cSamples > 0 then
+            local sx, sy, sz = siloSensorPos[1], siloSensorPos[2], siloSensorPos[3]
+            local sSurfaceY = DensityMapHeightUtil.getHeightAtWorldPos(sx, sy, sz)
+            local sVizY = sSurfaceY + vizOffset
+
+            -- Connection from last mid point (10m) to silo sensor (15m)
+            if lastMidX ~= nil then
+                siloAssistDrawing:addLine(lastMidX, lastMidY, lastMidZ, sx, sVizY, sz, 1, 0.2, 0.2, LINE_SCALE)
+            end
+
+            siloAssistDrawing:addSphere(sx, sVizY, sz, LR_SPHERE_SCALE, 1, 0.2, 0.2, 1)
+            siloAssistDrawing:addLine(sx, sSurfaceY, sz, sx, sVizY, sz, 0.7, 0.1, 0.1, LINE_SCALE)
+        end
+
+        -- Exit sensor (yellow, 10m) — shows where exit detection samples
+        local exitSensorPos = siloAssistHeightController.exitSensorWorldPos
+        if exitSensorPos ~= nil and cSamples ~= nil and #cSamples > 0 then
+            local ex, ey, ez = exitSensorPos[1], exitSensorPos[2], exitSensorPos[3]
+            local eSurfaceY = DensityMapHeightUtil.getHeightAtWorldPos(ex, ey, ez)
+            local eVizY = eSurfaceY + vizOffset
+            local eColorR = siloAssistHeightController.exitSensorFillDetected and 0.2 or 1.0
+            local eColorG = 1.0
+            local eColorB = 0.0
+            siloAssistDrawing:addSphere(ex, eVizY, ez, LR_SPHERE_SCALE * 0.8, eColorR, eColorG, eColorB, 1)
+            siloAssistDrawing:addLine(ex, eSurfaceY, ez, ex, eVizY, ez, eColorR * 0.7, eColorG * 0.7, 0, LINE_SCALE)
         end
     end)
     if not ok then
@@ -1441,5 +1437,65 @@ function siloAssistHud.loadFromXML(xmlFile, baseKey)
     end
     if hudY ~= nil then
         siloAssistHud.savedHudY = hudY
+    end
+    if siloAssistHud.savedHudX ~= nil and siloAssistHud.savedHudY ~= nil then
+        siloAssistHud.x = siloAssistHud.savedHudX
+        siloAssistHud.y = siloAssistHud.savedHudY
+    end
+end
+
+---------------------------------------------------------------------
+-- Draw 3D push scan points (debug mode, push mode only)
+-- Color-coded spheres: green=plateau, yellow=ramp, red=above avg
+---------------------------------------------------------------------
+function siloAssistHud:drawPushScan()
+    local hc = siloAssistHeightController
+    if hc == nil or not hc.pushScanDone then
+        return
+    end
+    local mode = siloAssistVehicleState.getSiloMode()
+    if mode ~= "push" then
+        return
+    end
+
+    local points = hc.pushScanPoints
+    if points == nil or #points == 0 then
+        return
+    end
+
+    local avg = hc.pushScanAvgHeight or 0
+    local vizOffset = 2.0
+    local startY = 100
+
+    for i = 1, #points do
+        local pt = points[i]
+        local surfaceY = DensityMapHeightUtil.getHeightAtWorldPos(pt.x, startY, pt.z)
+        local vizY = surfaceY + vizOffset + pt.fillH * 0.5
+
+        local r, g, b
+        if pt.isRamp then
+            r, g, b = 0.8, 0.8, 0.2
+        elseif pt.fillH > avg * 1.2 then
+            r, g, b = 1.0, 0.3, 0.3
+        elseif pt.fillH < avg * 0.5 then
+            r, g, b = 0.3, 0.3, 1.0
+        else
+            local t = math.clamp((pt.fillH - avg * 0.5) / (avg * 0.7 + 0.001), 0, 1)
+            r = 0.2 * (1 - t) + 0.2 * t
+            g = 0.8 * (1 - t) + 0.9 * t
+            b = 0.2 * (1 - t) + 0.2 * t
+        end
+
+        siloAssistDrawing:addSmallSphere(pt.x, vizY, pt.z, r, g, b)
+    end
+
+    -- Draw average height line (magenta, across silo width at average height)
+    if avg > 0.01 and #points > 0 then
+        local firstPt = points[1]
+        local lastPt = points[#points]
+        local avgVizY = DensityMapHeightUtil.getHeightAtWorldPos(firstPt.x, startY, firstPt.z) + vizOffset + avg * 0.5
+        siloAssistDrawing:addSphere(
+            (firstPt.x + lastPt.x) * 0.5, avgVizY, (firstPt.z + lastPt.z) * 0.5,
+            0.25, 1.0, 0.0, 1.0, 1.0)
     end
 end

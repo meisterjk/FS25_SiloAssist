@@ -209,9 +209,9 @@ end
 
 ---------------------------------------------------------------------
 -- Check if a world (x, z) position falls in the silo entry/exit ramp zone.
--- Uses the same rampStart/rampEnd formula as calcDriveThroughTarget:
+-- Uses the same rampStart/rampEnd formula as siloAssistModePush:
 --   rampStart = min(ENTRY_RAMP_METERS / siloLength, 0.5)
---   rampEnd   = max(1 - EXIT_RAMP_METERS / siloLength, 0.5)
+--   rampEnd   = max(1 - EXIT_RAMP_LENGTH / siloLength, 0.5)
 -- Returns true if in ramp zone, false if in plateau, nil if outside silo or
 -- no silo length available.
 ---------------------------------------------------------------------
@@ -225,7 +225,7 @@ function siloAssistTopoMap.isPointInRampZone(x, z)
     end
     local progress = u / siloAssistTopoMap.length
     local rampStart = math.min(siloAssistConfig.ENTRY_RAMP_METERS / siloAssistTopoMap.length, 0.5)
-    local rampEnd = math.max(1 - siloAssistConfig.EXIT_RAMP_METERS / siloAssistTopoMap.length, 0.5)
+    local rampEnd = math.max(1 - siloAssistConfig.EXIT_RAMP_LENGTH / siloAssistTopoMap.length, 0.5)
     return progress < rampStart or progress > rampEnd
 end
 
@@ -489,10 +489,10 @@ end
 
 ---------------------------------------------------------------------
 -- Compute target topography for all cells.
--- mode = "driveThrough" or "wedge"
--- For driveThrough: target = avg + offset (flat plateau)
--- For wedge:        target = baseHeight + (1 - u/length) * wedgeHeight + offset
---                  (keil shape from silo start to end)
+-- mode = "push", "smooth", or "wedge"
+-- For push/smooth: target = avg + offset (flat plateau)
+-- For wedge:        target = baseHeight + (u/length) * wedgeHeight + offset
+--                  (rising keil shape from silo entrance to end)
 -- opts may contain: offset (m), wedgeHeight (m)
 -- Writes cell.target for every cell that has samples.
 ---------------------------------------------------------------------
@@ -511,11 +511,11 @@ function siloAssistTopoMap.computeTargetTopography(mode, opts)
     end
 
     if mode == "wedge" then
-        local wedgeHeight = opts.wedgeHeight or siloAssistConfig.WEDGE_HEIGHT_M
+        local wedgeHeight = opts.wedgeHeight or siloAssistConfig.WEDGE_MIN_END_HEIGHT
         local baseHeight = math.max(avg - wedgeHeight, 0)
         for r = 1, siloAssistTopoMap.rows do
             local u = (r - 0.5) * siloAssistTopoMap.cellSize
-            local frac = 1 - u / siloAssistTopoMap.length
+            local frac = u / siloAssistTopoMap.length
             local cellTarget = baseHeight + frac * wedgeHeight + offset
             for c = 1, siloAssistTopoMap.cols do
                 local cell = siloAssistTopoMap.grid[r][c]
@@ -525,7 +525,7 @@ function siloAssistTopoMap.computeTargetTopography(mode, opts)
             end
         end
     else
-        -- driveThrough (default): flat at plateau avg + offset for ALL cells
+        -- push/smooth (default): flat at plateau avg + offset for ALL cells
         -- (plateau + ramp identical). Legacy ramp logic in HeightController
         -- controls the actual entry/exit ramp shape; TopoMap just provides
         -- a flat "Soll" so the plateau gets smoothed toward an even surface.

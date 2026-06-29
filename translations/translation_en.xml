@@ -37,6 +37,8 @@
 		<text name="sa_profileTab" text="Profile"/>
 
 		<!-- Mode labels -->
+		<text name="SA_MODE_PUSH" text="Push"/>
+		<text name="SA_MODE_SMOOTH" text="Smooth"/>
 		<text name="SA_MODE_DRIVETHROUGH" text="Drive-through"/>
 		<text name="SA_MODE_WEDGE" text="Wedge"/>
 

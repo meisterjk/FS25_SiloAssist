@@ -37,6 +37,8 @@
 		<text name="sa_profileTab" text="Profil"/>
 
 		<!-- Mode labels -->
+		<text name="SA_MODE_PUSH" text="Schieben"/>
+		<text name="SA_MODE_SMOOTH" text="Glaetten"/>
 		<text name="SA_MODE_DRIVETHROUGH" text="Durchfahrtssilo"/>
 		<text name="SA_MODE_WEDGE" text="Keilsilo"/>
 

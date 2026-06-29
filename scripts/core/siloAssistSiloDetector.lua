@@ -35,6 +35,10 @@ siloAssistSiloDetector.currentSilo = nil
 siloAssistSiloDetector.currentSiloArea = nil
 siloAssistSiloDetector.isInSilo = false
 siloAssistSiloDetector.progress = 0.0
+siloAssistSiloDetector.entryProgress = 0.0
+siloAssistSiloDetector.entryDirection = 1
+siloAssistSiloDetector.bladeProgress = 0.0
+siloAssistSiloDetector.bladeEntryProgress = 0.0
 siloAssistSiloDetector.lateralPos = 0.5
 siloAssistSiloDetector.siloLength = 0.0
 siloAssistSiloDetector.siloWidth = 0.0
@@ -66,6 +70,10 @@ function siloAssistSiloDetector.reset()
     siloAssistSiloDetector.currentSiloArea = nil
     siloAssistSiloDetector.isInSilo = false
     siloAssistSiloDetector.progress = 0.0
+    siloAssistSiloDetector.entryProgress = 0.0
+    siloAssistSiloDetector.entryDirection = 1
+    siloAssistSiloDetector.bladeProgress = 0.0
+    siloAssistSiloDetector.bladeEntryProgress = 0.0
     siloAssistSiloDetector.lateralPos = 0.5
     siloAssistSiloDetector.siloLength = 0.0
     siloAssistSiloDetector.siloWidth = 0.0
@@ -245,6 +253,10 @@ function siloAssistSiloDetector.update(vehicle, dt)
         siloAssistSiloDetector.currentSiloArea = nil
         siloAssistSiloDetector.isInSilo = false
         siloAssistSiloDetector.progress = 0.0
+        siloAssistSiloDetector.entryProgress = 0.0
+        siloAssistSiloDetector.entryDirection = 1
+        siloAssistSiloDetector.bladeProgress = 0.0
+        siloAssistSiloDetector.bladeEntryProgress = 0.0
         siloAssistSiloDetector.lateralPos = 0.5
         siloAssistSiloDetector.siloFillLevel = 0
         siloAssistSiloDetector.siloCompactedPercent = 0
@@ -275,6 +287,46 @@ function siloAssistSiloDetector.update(vehicle, dt)
     local dhx, dhz, dwx, dwz, length, width = getSiloAreaVectors(area)
     siloAssistSiloDetector.siloLength = length or 0
     siloAssistSiloDetector.siloWidth = width or 0
+
+    -- Determine entry direction on first silo entry:
+    -- Compare vehicle push direction with silo longitudinal axis.
+    -- entryDirection = 1: entry is at low progress (silo start)
+    -- entryDirection = -1: entry is at high progress (silo end), need to invert
+    if not siloAssistSiloDetector.wasInSilo then
+        local lengthSq = dhx * dhx + dhz * dhz
+        if lengthSq > 0.001 then
+            local ndhx = dhx / math.sqrt(lengthSq)
+            local ndhz = dhz / math.sqrt(lengthSq)
+            local vx, _, vz = getWorldTranslation(vehicle.rootNode)
+            local zx, _, zz = localToWorld(vehicle.rootNode, 0, 0, 1)
+            local fdx = zx - vx
+            local fdz = zz - vz
+            local pushDir = siloAssistToolDetection.bladePushDir
+            local dotSilo = (fdx * ndhx + fdz * ndhz) * pushDir
+            siloAssistSiloDetector.entryDirection = dotSilo >= 0 and 1 or -1
+            siloAssistDebug.log("Silo", string.format(
+                "entryDirection=%d dotSilo=%.3f pushDir=%d isFront=%s",
+                siloAssistSiloDetector.entryDirection, dotSilo, pushDir,
+                tostring(siloAssistToolDetection.isFrontAttached)))
+        end
+    end
+
+    -- Blade-based progress (from blade node, not vehicle rootNode)
+    local bladeNode = siloAssistToolDetection.bladeNode
+    if bladeNode ~= nil and area ~= nil then
+        siloAssistSiloDetector.bladeProgress = siloAssistSiloDetector.getProgressAtNode(bladeNode, area)
+    else
+        siloAssistSiloDetector.bladeProgress = siloAssistSiloDetector.progress
+    end
+
+    -- entryProgress: 0 = entry side, 1 = far end (relative to driving direction)
+    if siloAssistSiloDetector.entryDirection >= 0 then
+        siloAssistSiloDetector.entryProgress = siloAssistSiloDetector.progress
+        siloAssistSiloDetector.bladeEntryProgress = siloAssistSiloDetector.bladeProgress
+    else
+        siloAssistSiloDetector.entryProgress = 1 - siloAssistSiloDetector.progress
+        siloAssistSiloDetector.bladeEntryProgress = 1 - siloAssistSiloDetector.bladeProgress
+    end
 
     siloAssistSiloDetector.siloFillLevel = silo.fillLevel or 0
     siloAssistSiloDetector.siloCompactedPercent = silo.compactedPercent or 0
@@ -319,9 +371,11 @@ function siloAssistSiloDetector.update(vehicle, dt)
     siloAssistSiloDetector.stagedFillHeight = siloAssistSiloDetector.getStagedFillHeight()
 
     siloAssistDebug.logThrottled("Silo", "update", string.format(
-        "inSilo=%s prog=%.3f lat=%.3f fillLvl=%d fillH=%.3f stageH=%.3f smoothH=%.3f len=%.1f wid=%.1f",
+        "inSilo=%s prog=%.3f entryProg=%.3f entryDir=%d lat=%.3f fillLvl=%d fillH=%.3f stageH=%.3f smoothH=%.3f len=%.1f wid=%.1f",
         tostring(siloAssistSiloDetector.isInSilo),
         siloAssistSiloDetector.progress,
+        siloAssistSiloDetector.entryProgress,
+        siloAssistSiloDetector.entryDirection,
         siloAssistSiloDetector.lateralPos,
         siloAssistSiloDetector.siloFillLevel,
         siloAssistSiloDetector.siloFillHeightAtVehicle,
@@ -358,6 +412,25 @@ function siloAssistSiloDetector.getPositionInSilo(vehicle, silo, area)
         return 0
     end
 
+    local dot = dx * dhx + dz * dhz
+    return math.clamp(dot / lengthSq, 0, 1)
+end
+
+function siloAssistSiloDetector.getProgressAtNode(node, area)
+    if node == nil or area == nil then
+        return 0
+    end
+    local dhx, dhz = getSiloAreaVectors(area)
+    if dhx == nil then
+        return 0
+    end
+    local nx, _, nz = getWorldTranslation(node)
+    local dx = nx - area.sx
+    local dz = nz - area.sz
+    local lengthSq = dhx * dhx + dhz * dhz
+    if lengthSq < 0.001 then
+        return 0
+    end
     local dot = dx * dhx + dz * dhz
     return math.clamp(dot / lengthSq, 0, 1)
 end
@@ -514,6 +587,10 @@ function siloAssistSiloDetector.prefetchSiloData(worldX, worldY, worldZ)
                         siloAssistSiloDetector.estimatedFillHeight = siloAssistSiloDetector.getEstimatedFillHeight()
                         siloAssistSiloDetector.isInSilo = false
                         siloAssistSiloDetector.progress = 0
+                        siloAssistSiloDetector.entryProgress = 0
+                        siloAssistSiloDetector.entryDirection = 1
+                        siloAssistSiloDetector.bladeProgress = 0
+                        siloAssistSiloDetector.bladeEntryProgress = 0
 
                         -- TopoMap: initialize grid + coarse scan once on silo entry
                         if siloAssistTopoMap ~= nil then
@@ -525,7 +602,7 @@ function siloAssistSiloDetector.prefetchSiloData(worldX, worldY, worldZ)
                             local offset = siloAssistVehicleState.getHeightOffset()
                             local opts = { offset = offset }
                             if mode == "wedge" then
-                                opts.wedgeHeight = siloAssistConfig.WEDGE_HEIGHT_M
+                                opts.wedgeHeight = siloAssistConfig.WEDGE_MIN_END_HEIGHT
                             end
                             siloAssistTopoMap.computeTargetTopography(mode, opts)
                         end

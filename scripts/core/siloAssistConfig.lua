@@ -7,20 +7,35 @@ siloAssistConfig.DEBUG = false
 siloAssistConfig.DEBUG_SHOW_HEIGHT = false
 
 -- Silo mode (default, overridden per-vehicle)
-siloAssistConfig.DEFAULT_SILO_MODE = "driveThrough"
+siloAssistConfig.DEFAULT_SILO_MODE = "push"
 siloAssistConfig.MODES = {
-    { key = "driveThrough", label = "SA_MODE_DRIVETHROUGH" },
-    { key = "wedge",         label = "SA_MODE_WEDGE" },
+    { key = "push",   label = "SA_MODE_PUSH" },
+    { key = "smooth", label = "SA_MODE_SMOOTH" },
+    { key = "wedge",  label = "SA_MODE_WEDGE" },
 }
 
 -- Drive-through ramp lengths in meters (converted to progress % by silo length)
 siloAssistConfig.ENTRY_RAMP_METERS = 12.0
-siloAssistConfig.EXIT_RAMP_METERS = 6.0
-siloAssistConfig.EXIT_RAMP_METERS_MAX = 10.0  -- hard cap (safety for very long silos)
 
--- Exit ramp: freeze blade height at start-of-ramp value + tilt backward to
--- empty material before leaving silo. No height raise/lower — tilt does the work.
-siloAssistConfig.EXIT_RAMP_TILT_MAX_DEG = 20
+-- Exit detection: sensor distance in meters ahead of blade.
+-- When this sensor detects no fill material, exit ramp starts.
+siloAssistConfig.EXIT_DETECT_DISTANCE = 10.0
+siloAssistConfig.EXIT_DETECT_FILL_THRESHOLD = 0.05  -- minimum fill height to count as "in silo"
+
+-- Silo end sensor: checks if a point ahead is still inside the silo area.
+-- Used for wedge mode to detect the silo exit (walls), not fill level.
+siloAssistConfig.SILO_END_SENSOR_DIST = 5.0
+
+-- Exit ramp: stepped height offset + tilt increase.
+-- 3 steps: at 0m (+10cm, 10° tilt), 2m (+20cm, 20° tilt), 4m (+30cm, 30° tilt).
+-- Normal height controller runs throughout — only offset is added.
+-- Wedge mode uses base tilt (5°) instead of stepped tilt.
+siloAssistConfig.EXIT_RAMP_LENGTH = 6.0
+siloAssistConfig.EXIT_RAMP_STEPS = {
+    { dist = 0, heightAdd = 0.10, tiltDeg = 10 },
+    { dist = 2, heightAdd = 0.20, tiltDeg = 20 },
+    { dist = 4, heightAdd = 0.30, tiltDeg = 30 },
+}
 
 -- Minimum absolute height above fill (always at least 20cm above fill)
 siloAssistConfig.MIN_HEIGHT_ABOVE_FILL = 0.20
@@ -32,25 +47,10 @@ siloAssistConfig.AUTO_FILL_OFFSET_FACTOR = 0.05
 siloAssistConfig.DEFAULT_HEIGHT_OFFSET = 0.0
 siloAssistConfig.OFFSET_MIN = -0.5
 siloAssistConfig.OFFSET_MAX = 1.0
-siloAssistConfig.OFFSET_STEP = 0.10
+siloAssistConfig.OFFSET_STEP = 0.05
 siloAssistConfig.ALPHA_STEP = 0.04
 siloAssistConfig.HEIGHT_THRESHOLD = 0.04
 siloAssistConfig.HEIGHT_DEADBAND = 0.05
-
--- Surface sampling / follow factor
-siloAssistConfig.FOLLOW_FACTOR = 0.5
-siloAssistConfig.FOLLOW_STEP = 0.1
-siloAssistConfig.FOLLOW_MIN = 0.0
-siloAssistConfig.FOLLOW_MAX = 1.0
-
--- Lookahead time: how many seconds ahead to sample surface
-siloAssistConfig.LOOKAHEAD_TIME = 1.5
-siloAssistConfig.LOOKAHEAD_STEP = 0.25
-siloAssistConfig.LOOKAHEAD_MIN = 0.5
-siloAssistConfig.LOOKAHEAD_MAX = 5.0
-
--- Profile-based preemptive adjustment (0 = disabled)
-siloAssistConfig.PROFILE_GAIN = 0.3
 
 -- Auto-tilt: degrees per meter of fill height
 siloAssistConfig.AUTO_TILT_FACTOR = 2.5
@@ -64,7 +64,7 @@ siloAssistConfig.DEFAULT_TILT_OFFSET = 0
 siloAssistConfig.TILT_STEP = 1
 siloAssistConfig.TILT_MIN = -10
 siloAssistConfig.TILT_MAX = 20
-siloAssistConfig.SHIELD_TILT_DEG = 5
+siloAssistConfig.SHIELD_TILT_DEG = 10
 siloAssistConfig.SHIELD_TILT_PITCH_FACTOR = -1
 siloAssistConfig.SHIELD_TILT_HYSTERESIS_DEG = 1
 
@@ -78,47 +78,67 @@ siloAssistConfig.DENSITY_LITERS_PER_CBM = 1000
 siloAssistConfig.FILL_LEVEL_STEP = 20000
 siloAssistConfig.FILL_HEIGHT_SMOOTHING = 0.95
 
--- Wedge mode
-siloAssistConfig.WEDGE_MAX_HEIGHT = 1.5
+-- Wedge mode (isolated from push/smooth)
+siloAssistConfig.WEDGE_MIN_END_HEIGHT = 0.1
+siloAssistConfig.WEDGE_MAX_HEIGHT = 4.0
 siloAssistConfig.WEDGE_INCREMENT = 0.02
-siloAssistConfig.WEDGE_HEIGHT_M = 0.3
+siloAssistConfig.WEDGE_TILT_DEG = 5
+siloAssistConfig.WEDGE_END_EXTRA = 0.80  -- zusaetzliche Hoehe am Keil-Ende (m)
 
 -- Pre-positioning
 siloAssistConfig.PRE_ENTRY_DISTANCE = 10.0
 
--- Long-range entry/exit detection (10m ahead)
-siloAssistConfig.LONG_RANGE_SAMPLE_DIST = 10.0
+-- Long-range entry/exit detection (15m ahead)
+siloAssistConfig.LONG_RANGE_SAMPLE_DIST = 15.0
 siloAssistConfig.LONG_RANGE_FILL_THRESHOLD = 0.05
+
+-- Silo sensor (16th sensor, 15m ahead of blade, center) — separate from longRange
+siloAssistConfig.SILO_SENSOR_DIST = 15.0
+siloAssistConfig.SILO_SENSOR_FILL_THRESHOLD = 0.05
+
+-- Push mode: full silo scan resolution
+siloAssistConfig.PUSH_SCAN_STEP_M = 0.5      -- longitudinal sample step (detailed scan)
+siloAssistConfig.PUSH_SCAN_MIN_POINTS = 30    -- minimum points per longitudinal strip
+siloAssistConfig.PUSH_SCAN_RAMP_EXCLUDE = true  -- exclude entry/exit ramp zones from average
+
+-- Smooth mode: fixed offset above average of far sensors
+siloAssistConfig.SMOOTH_HEIGHT_ADD = 0.10  -- +10cm above average
 
 -- Shovel/dump mode
 siloAssistConfig.DUMP_HEIGHT_OFFSET = 1.5
 siloAssistConfig.DUMP_POSITION_PCT = 0.95
 
--- Stuck detection: speed < 1 km/h for 2 seconds in push direction → stuck
-siloAssistConfig.STUCK_SPEED_THRESHOLD = 1.0
-siloAssistConfig.STUCK_TIME_THRESHOLD = 2.0
+-- Compactor control (BunkerSiloCompacter): default off, enabled per-vehicle
+siloAssistConfig.DEFAULT_COMPACTOR_ENABLED = false
 
--- Topography map (Phase 1+: persistent fill-height grid over silo)
+-- Stuck detection: >= 2 wheels with slipRatio > 0.5 for 0.3s, speed < 3 km/h, push direction → stuck
+siloAssistConfig.STUCK_TIME_THRESHOLD = 0.3
+siloAssistConfig.STUCK_WHEELSLIP_RATIO = 0.5
+siloAssistConfig.STUCK_MIN_WHEELS = 2
+siloAssistConfig.STUCK_SPEED_THRESHOLD = 3.0
+-- Stuck recovery: minimum time in RAISING state before returning to ACTIVE (ms)
+siloAssistConfig.STUCK_RAISE_MIN_MS = 1000
+-- Stuck recovery: height offset added to target when stuck (meters)
+siloAssistConfig.STUCK_HEIGHT_ADD = 0.20
+-- Stuck release hysteresis: wheelSlip must be clear for this long before unstuck (ms)
+siloAssistConfig.STUCK_RELEASE_MS = 500
+
+-- Anti-bury / anti-dig protection
+siloAssistConfig.BURY_VY_THRESHOLD = -0.3       -- m/s, blade downward velocity threshold
+siloAssistConfig.BURY_VY_LIFT = 0.05            -- m, lift amount on vy guard
+siloAssistConfig.BURY_VY_RELEASE_MARGIN = 0.05   -- m, blade must be this much above target before release
+siloAssistConfig.BURY_VY_MIN_DURATION_MS = 500   -- ms, minimum duration for forceTilt before release
+siloAssistConfig.BLADE_MIN_GROUND_DIST = 0.05   -- m, below this blade-ground distance, no lowering
+siloAssistConfig.LOWER_RATE_LIMIT_FACTOR = 0.5   -- lowering max at half ALPHA_STEP (rate limit)
+siloAssistConfig.DYNAMIC_DEADBAND_VAR = 0.1      -- variance threshold for doubling deadband
+
+-- Topography map (used by TopoMap module for coverage tracking)
 siloAssistConfig.TOPO_MAP_CELL_SIZE      = 1.0    -- m, grid resolution
 siloAssistConfig.TOPO_MAP_COARSE_STEP   = 5.0    -- m, initial coarse scan step
 siloAssistConfig.TOPO_MAP_EMA           = 0.3    -- weight of new sample (0..1)
 siloAssistConfig.TOPO_MAP_MIN_SAMPLES   = 3      -- min samples before cell contributes
-siloAssistConfig.TOPO_MAP_CORRECTION_GAIN = 0.0  -- start OFF, raise to test map influence
-siloAssistConfig.TOPO_MAP_CORRECTION_MAX = 0.7   -- max gain (cap)
-siloAssistConfig.TOPO_MAP_RAMP_DAMPING  = 0.3    -- gain multiplier in ramp zone (legacy ramp dominates there)
 siloAssistConfig.TOPO_MAP_DONE_TOLERANCE = 0.05  -- variance threshold for "eben" (m)
 siloAssistConfig.TOPO_MAP_DONE_HOLD_SEC = 3.0    -- seconds variance must hold for "eben"
-
--- Anti-bury / anti-dig protection (Block D)
-siloAssistConfig.TOPO_MAX_CORRECTION = 0.30     -- TopoMap darf Legacy-Ziel max um 30cm verschieben
-siloAssistConfig.BURY_VY_THRESHOLD = -0.3       -- m/s, Schild-Abwärts-Geschwindigkeit ab der prophylaktisch angehoben wird
-siloAssistConfig.BURY_VY_LIFT = 0.05            -- m, Anhebung bei vy-Schutz
-siloAssistConfig.BURY_VY_RELEASE_MARGIN = 0.05  -- m, Schild muss so viel ueber Ziel sein bevor forceTilt aufgehoben wird
-siloAssistConfig.BURY_VY_MIN_DURATION_MS = 500  -- ms, Mindestdauer fuer forceTilt bevor Release erlaubt
-siloAssistConfig.PITCH_NO_LOWER_DEG = -8.0      -- Fahrzeug-Pitch unter dem keine weitere Absenkung erfolgt
-siloAssistConfig.BLADE_MIN_GROUND_DIST = 0.05   -- m, unter diesem Schild-Bodenabstand kein Absenken
-siloAssistConfig.LOWER_RATE_LIMIT_FACTOR = 0.5  -- Absenken max mit halbem ALPHA_STEP (Rate-Limit)
-siloAssistConfig.DYNAMIC_DEADBAND_VAR = 0.1      -- Varianz ab der Deadband verdoppelt wird
 
 siloAssistConfig.STATE_OFF = "OFF"
 siloAssistConfig.STATE_WAITING = "WAITING"
@@ -160,16 +180,6 @@ function siloAssistConfig.adjustOffset(delta)
     return newOffset
 end
 
-function siloAssistConfig.adjustFollow(delta)
-    local currentFollow = siloAssistVehicleState.getFollowFactor()
-    local newFollow = math.clamp(
-        currentFollow + delta,
-        siloAssistConfig.FOLLOW_MIN,
-        siloAssistConfig.FOLLOW_MAX)
-    siloAssistVehicleState.setFollowFactor(math.floor(newFollow * 10 + 0.5) / 10)
-    return siloAssistVehicleState.getFollowFactor()
-end
-
 function siloAssistConfig.adjustTilt(delta)
     local currentTilt = siloAssistVehicleState.getTiltOffset()
     local newTilt = math.clamp(
@@ -178,24 +188,4 @@ function siloAssistConfig.adjustTilt(delta)
         siloAssistConfig.TILT_MAX)
     siloAssistVehicleState.setTiltOffset(newTilt)
     return newTilt
-end
-
-function siloAssistConfig.adjustLookahead(delta)
-    local currentLookahead = siloAssistVehicleState.getLookaheadTime()
-    local newLookahead = math.clamp(
-        currentLookahead + delta,
-        siloAssistConfig.LOOKAHEAD_MIN,
-        siloAssistConfig.LOOKAHEAD_MAX)
-    siloAssistVehicleState.setLookaheadTime(math.floor(newLookahead * 4 + 0.5) / 4)
-    return siloAssistVehicleState.getLookaheadTime()
-end
-
-function siloAssistConfig.adjustTopoGain(delta)
-    local currentGain = siloAssistVehicleState.getTopoGain()
-    local newGain = math.clamp(
-        currentGain + delta,
-        0,
-        siloAssistConfig.TOPO_MAP_CORRECTION_MAX)
-    siloAssistVehicleState.setTopoGain(math.floor(newGain * 10 + 0.5) / 10)
-    return siloAssistVehicleState.getTopoGain()
 end

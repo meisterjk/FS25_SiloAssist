@@ -19,13 +19,18 @@ Tastenkombinationen: Strg+L - Assist an/aus | RStrg+L - Modus wechseln (Durchfah
     <iconFilename>icon_siloAssist.dds</iconFilename>
     <multiplayer supported="true"/>
     <extraSourceFiles>
+        <sourceFile filename="scripts/core/siloAssistEquipmentConfig.lua"/>
         <sourceFile filename="scripts/core/siloAssistConfig.lua"/>
         <sourceFile filename="scripts/core/siloAssistDebug.lua"/>
         <sourceFile filename="scripts/core/siloAssistVehicleState.lua"/>
         <sourceFile filename="scripts/core/siloAssistToolDetection.lua"/>
         <sourceFile filename="scripts/core/siloAssistTopoMap.lua"/>
         <sourceFile filename="scripts/core/siloAssistSiloDetector.lua"/>
+        <sourceFile filename="scripts/modes/siloAssistModePush.lua"/>
+        <sourceFile filename="scripts/modes/siloAssistModeSmooth.lua"/>
+        <sourceFile filename="scripts/modes/siloAssistModeWedge.lua"/>
         <sourceFile filename="scripts/controller/siloAssistTiltController.lua"/>
+        <sourceFile filename="scripts/controller/siloAssistCompactorController.lua"/>
         <sourceFile filename="scripts/hooks/siloAssistHeightController.lua"/>
         <sourceFile filename="scripts/hooks/siloAssistDumpController.lua"/>
         <sourceFile filename="scripts/hud/siloAssistDrawing.lua"/>
@@ -56,4 +61,17 @@ Tastenkombinationen: Strg+L - Assist an/aus | RStrg+L - Modus wechseln (Durchfah
             </binding>
         </actionBinding>
     </inputBinding>
+    <siloAssistEquipment>
+        <equipment configFileName="data/vehicles/holaras/stego485Pro/stego485Pro.xml"
+                    toolType="compactor"
+                    controlMode="attacherJoints"
+                    attachType="threePoint"
+                    autoEnable="false"
+                    description="HOLARAS Stego 485 Pro"/>
+        <equipment configFileName="data/vehicles/holaras/mes400/mes400.xml"
+                    toolType="leveler"
+                    controlMode="attacherJointControl"
+                    attachType="threePoint"
+                    description="HOLARAS MES 400"/>
+    </siloAssistEquipment>
 </modDesc>

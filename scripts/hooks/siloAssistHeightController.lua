@@ -12,10 +12,6 @@ siloAssistHeightController = {}
 ---------------------------------------------------------------------
 -- State
 ---------------------------------------------------------------------
-siloAssistHeightController.wedgePassCount = 0
-siloAssistHeightController.wasAtSiloEnd = false
-siloAssistHeightController.lastProgress = 0
-
 siloAssistHeightController.currentTargetAlpha = nil
 
 siloAssistHeightController.hookInstalled = false
@@ -63,20 +59,40 @@ siloAssistHeightController.longRangeFillHeight = nil
 siloAssistHeightController.longRangeFillDetected = false
 siloAssistHeightController.longRangeWorldPos = nil
 
+-- Silo sensor (16th sensor, 15m ahead center)
+siloAssistHeightController.siloSensorFillHeight = nil
+siloAssistHeightController.siloSensorFillDetected = false
+siloAssistHeightController.siloSensorWorldPos = nil
+
+-- Exit sensor: detects when blade is approaching silo exit (no fill ahead)
+siloAssistHeightController.exitSensorFillHeight = nil
+siloAssistHeightController.exitSensorFillDetected = true  -- default true = still in silo
+siloAssistHeightController.exitSensorWorldPos = nil
+
+-- Silo end sensor: checks if a point ahead is still inside the silo area (walls, not fill)
+siloAssistHeightController.siloEndInside = true  -- default true = still inside silo
+siloAssistHeightController.siloEndWorldPos = nil
+
 -- Exit ramp state
 siloAssistHeightController.exitRampActive = false
 siloAssistHeightController.exitRampProgress = 0
-siloAssistHeightController.exitRampStartHeight = nil  -- frozen blade height at ramp start
-siloAssistHeightController.exitRampEffectiveMeters = nil  -- actual ramp length used (capped)
+siloAssistHeightController.exitRampHeightAdd = 0
+
+-- Push mode: full silo scan state
+siloAssistHeightController.pushScanAvgHeight = nil     -- average height of plateau (excluding ramps)
+siloAssistHeightController.pushScanMedianHeight = nil  -- median height of plateau
+siloAssistHeightController.pushScanMinHeight = nil      -- min height in scan
+siloAssistHeightController.pushScanMaxHeight = nil      -- max height in scan
+siloAssistHeightController.pushScanCount = 0           -- number of scan points
+siloAssistHeightController.pushScanDone = false         -- scan completed?
+siloAssistHeightController.pushNeedRescan = false       -- trigger rescan on next update
+siloAssistHeightController.pushScanPoints = {}          -- {x, z, fillH} for visualization
 
 ---------------------------------------------------------------------
 -- Reset
 ---------------------------------------------------------------------
 function siloAssistHeightController.reset()
     siloAssistHeightController.currentTargetAlpha = nil
-    siloAssistHeightController.wedgePassCount = 0
-    siloAssistHeightController.wasAtSiloEnd = false
-    siloAssistHeightController.lastProgress = 0
     siloAssistHeightController.lastRaycastGroundDistance = nil
     siloAssistHeightController.lastPitchDeg = nil
     siloAssistHeightController.lastTargetHeightAboveGround = nil
@@ -99,24 +115,33 @@ function siloAssistHeightController.reset()
     siloAssistHeightController._cachedWheelVehicle = nil
     siloAssistHeightController._bladeHalfWidth = nil
     siloAssistHeightController._bladeWidthNode = nil
-    siloAssistHeightController._profileType = "flat"
-    siloAssistHeightController._preemptiveHeightDiff = 0
-    siloAssistHeightController._profileCurvature = 0
-    siloAssistHeightController._profileGradNear = 0
-    siloAssistHeightController._profileGradFar = 0
-    siloAssistHeightController._profileNearFlat = false
-    siloAssistHeightController._profileEntering = false
     siloAssistHeightController.longRangeFillHeight = nil
     siloAssistHeightController.longRangeFillDetected = false
     siloAssistHeightController.longRangeWorldPos = nil
     siloAssistHeightController.exitRampActive = false
     siloAssistHeightController.exitRampProgress = 0
-    siloAssistHeightController.exitRampStartHeight = nil
-    siloAssistHeightController.exitRampEffectiveMeters = nil
+    siloAssistHeightController.exitRampHeightAdd = 0
     siloAssistHeightController._lastBladeWorldPos = nil
     siloAssistHeightController._lastBladeVy = nil
     siloAssistHeightController._buryTiltActive = false
     siloAssistHeightController._buryTiltStartTime = 0
+    siloAssistHeightController.siloSensorFillHeight = nil
+    siloAssistHeightController.siloSensorFillDetected = false
+    siloAssistHeightController.siloSensorWorldPos = nil
+    siloAssistHeightController.exitSensorFillHeight = nil
+    siloAssistHeightController.exitSensorFillDetected = true
+    siloAssistHeightController.exitSensorWorldPos = nil
+    siloAssistHeightController.siloEndInside = true
+    siloAssistHeightController.siloEndWorldPos = nil
+    siloAssistHeightController.siloSensorWorldPos = nil
+    siloAssistHeightController.pushScanAvgHeight = nil
+    siloAssistHeightController.pushScanMedianHeight = nil
+    siloAssistHeightController.pushScanMinHeight = nil
+    siloAssistHeightController.pushScanMaxHeight = nil
+    siloAssistHeightController.pushScanCount = 0
+    siloAssistHeightController.pushScanDone = false
+    siloAssistHeightController.pushNeedRescan = false
+    siloAssistHeightController.pushScanPoints = {}
 end
 
 ---------------------------------------------------------------------
@@ -308,125 +333,177 @@ function siloAssistHeightController.getToolPitchDegrees(bladeNode, toolObject)
 end
 
 ---------------------------------------------------------------------
--- Target height calculation
--- Returns height ABOVE GROUND in meters.
+-- Shared: calculate effective offset (user + auto, clamped to minimum).
+-- Used by all modes via dispatcher.
 ---------------------------------------------------------------------
-function siloAssistHeightController.calculateTargetHeight(progress, fillHeight)
+function siloAssistHeightController.calcEffectiveOffset(fillHeight, densityH)
     local config = siloAssistConfig
-    local siloMode = siloAssistVehicleState.getSiloMode()
     local heightOffset = siloAssistVehicleState.getHeightOffset()
-
-    if siloMode == "driveThrough" then
-        return siloAssistHeightController.calcDriveThroughTarget(progress, fillHeight)
-    elseif siloMode == "wedge" then
-        return siloAssistHeightController.calcWedgeTarget(progress, fillHeight)
-    end
-
-    return fillHeight + heightOffset
+    local offsetBase = math.max(fillHeight, densityH or 0)
+    local autoOffset = offsetBase * config.AUTO_FILL_OFFSET_FACTOR
+    return math.max(heightOffset + autoOffset, config.MIN_HEIGHT_ABOVE_FILL)
 end
 
-function siloAssistHeightController.calcDriveThroughTarget(progress, fillHeight)
-    local config = siloAssistConfig
-    local heightOffset = siloAssistVehicleState.getHeightOffset()
+---------------------------------------------------------------------
+-- Shared: universal ramp target calculation.
+-- Pure math — no mode logic, no config access.
+--   baseHeight: base fill height (e.g. fillHeight or scanned average)
+--   offset: effective offset above base
+--   progress: 0=silo entrance, 1=silo end
+--   rampStart: progress fraction where entry ramp starts (0 = no ramp)
+--   rampEnd: progress fraction where exit ramp ends (1 = no ramp)
+--   rampHeight: additional height at progress=1 (0 = flat, >0 = wedge slope)
+---------------------------------------------------------------------
+function siloAssistHeightController.calcRampTarget(baseHeight, offset, progress, rampStart, rampEnd, rampHeight)
+    local groundOffset = offset
+    local fullHeight = baseHeight + offset
 
-    -- Exit ramp: freeze height at start-of-ramp value. Tilt does the emptying.
-    if siloAssistHeightController.exitRampActive
-        and siloAssistHeightController.exitRampStartHeight ~= nil then
-        siloAssistHeightController.lastEffectiveRampStart = 0
-        siloAssistHeightController.lastEffectiveRampEnd = 1
-        return siloAssistHeightController.exitRampStartHeight
+    if progress < rampStart and rampStart > 0 then
+        local t = progress / rampStart
+        return groundOffset + (fullHeight - groundOffset) * t
+    elseif progress > rampEnd and rampEnd < 1 and rampHeight ~= 0 then
+        local t = (progress - rampEnd) / (1 - rampEnd)
+        return fullHeight + rampHeight * (1 - t)
+    else
+        if rampHeight > 0 then
+            return baseHeight + progress * rampHeight + offset
+        else
+            return fullHeight
+        end
     end
+end
 
+---------------------------------------------------------------------
+-- Target height calculation — dispatcher.
+-- Computes shared offset, delegates to mode module.
+---------------------------------------------------------------------
+function siloAssistHeightController.calculateTargetHeight(progress, fillHeight)
     local densityH = math.max(
         siloAssistSiloDetector.densityFillHeightAtBlade or 0,
         siloAssistSiloDetector.densityFillHeightAtVehicle or 0)
-    local offsetBase = math.max(fillHeight, densityH)
-    local autoOffset = offsetBase * config.AUTO_FILL_OFFSET_FACTOR
-    local effectiveOffset = math.max(heightOffset + autoOffset, config.MIN_HEIGHT_ABOVE_FILL)
-    local groundOffset = effectiveOffset
-    local middleHeight = fillHeight + effectiveOffset
+    local effectiveOffset = siloAssistHeightController.calcEffectiveOffset(fillHeight, densityH)
 
-    local siloLength = math.max(siloAssistSiloDetector.siloLength or 1, 1)
-    local rampStart = math.min(config.ENTRY_RAMP_METERS / siloLength, 0.5)
-    local rampEnd = math.max(1 - math.min(config.EXIT_RAMP_METERS / siloLength, 0.5), 0.5)
+    local siloMode = siloAssistVehicleState.getSiloMode()
+    local target
 
-    siloAssistHeightController.lastEffectiveRampStart = rampStart
-    siloAssistHeightController.lastEffectiveRampEnd = rampEnd
-
-    local result
-    if progress < rampStart then
-        local rampProgress = progress / rampStart
-        result = groundOffset + (middleHeight - groundOffset) * rampProgress
+    if siloMode == "push" then
+        target = siloAssistModePush.calcTarget(progress, fillHeight, effectiveOffset)
+    elseif siloMode == "smooth" then
+        target = siloAssistModeSmooth.calcTarget(progress, fillHeight, effectiveOffset)
+    elseif siloMode == "wedge" then
+        target = siloAssistModeWedge.calcTarget(progress, fillHeight, effectiveOffset)
     else
-        result = middleHeight
+        target = fillHeight + effectiveOffset
     end
-    return result
+
+    target = target + (siloAssistState.stuckHeightAdd or 0)
+
+    return target
 end
 
-function siloAssistHeightController.calcWedgeTarget(progress, fillHeight)
+
+
+---------------------------------------------------------------------
+-- Full silo scan for push mode: samples the entire silo plateau
+-- (excluding entry/exit ramp zones) and computes average fill height.
+-- Result stored in pushScanAvgHeight, remains fixed until rescan triggered.
+---------------------------------------------------------------------
+function siloAssistHeightController.scanFullSilo(silo, area)
+    if silo == nil or area == nil then
+        siloAssistDebug.log("Height", "scanFullSilo: silo or area nil")
+        return
+    end
+
+    local dhx, dhz, dwx, dwz
+    if area.dhx ~= nil then
+        dhx, dhz = area.dhx, area.dhz
+        dwx, dwz = area.dwx, area.dwz
+    else
+        dhx = area.hx - area.sx
+        dhz = area.hz - area.sz
+        dwx = area.wx - area.sx
+        dwz = area.wz - area.sz
+    end
+    local siloLength = MathUtil.vector3Length(dhx, 0, dhz)
+    local siloWidth = MathUtil.vector3Length(dwx, 0, dwz)
+    if siloLength < 1 or siloWidth < 1 then
+        siloAssistDebug.log("Height", "scanFullSilo: invalid silo dimensions")
+        return
+    end
+
+    local nhx, nhz = dhx / siloLength, dhz / siloLength
+    local nwx, nwz = dwx / siloWidth, dwz / siloWidth
+
     local config = siloAssistConfig
-    local heightOffset = siloAssistVehicleState.getHeightOffset()
+    local rampStartPct = math.min(config.ENTRY_RAMP_METERS / siloLength, 0.5)
+    local rampEndPct = math.max(1 - config.EXIT_RAMP_LENGTH / siloLength, 0.5)
 
-    local currentWedgeHeight = math.min(
-        config.WEDGE_MAX_HEIGHT,
-        config.WEDGE_HEIGHT_M + siloAssistHeightController.wedgePassCount * config.WEDGE_INCREMENT
-    )
+    -- Dynamic step: ensure at least PUSH_SCAN_MIN_POINTS per strip, cap at PUSH_SCAN_STEP_M
+    local step = siloLength / config.PUSH_SCAN_MIN_POINTS
+    step = math.max(step, 0.5)       -- minimum 0.5m resolution
+    step = math.min(step, config.PUSH_SCAN_STEP_M)  -- maximum step
+    local numLong = math.floor(siloLength / step)
+    if numLong < 2 then numLong = 2 end
+    local actualStep = siloLength / numLong
 
-    if progress >= 0.95 then
-        local heightAboveGround = siloAssistHeightController.lastRaycastGroundDistance
-        if heightAboveGround ~= nil and heightAboveGround >= config.WEDGE_MAX_HEIGHT then
-            currentWedgeHeight = config.WEDGE_MAX_HEIGHT + (siloAssistHeightController.wedgePassCount * config.WEDGE_INCREMENT * 0.5)
-            currentWedgeHeight = math.min(currentWedgeHeight, config.WEDGE_MAX_HEIGHT * 1.5)
+    -- Lateral strips: 25%, 50%, 75% of width
+    local latStrips = {0.25, 0.50, 0.75}
+
+    local heights = {}
+    local sum, count = 0, 0
+    local startY = 100
+    local scanPoints = {}
+
+    for i = 0, numLong do
+        local prog = i / numLong
+        for _, latPct in ipairs(latStrips) do
+            local wx = area.sx + nhx * prog * siloLength + nwx * latPct * siloWidth
+            local wz = area.sz + nhz * prog * siloLength + nwz * latPct * siloWidth
+            local _, fillAbove = DensityMapHeightUtil.getHeightAtWorldPos(wx, startY, wz)
+            local fillH = math.max(fillAbove or 0, 0)
+            local isRamp = config.PUSH_SCAN_RAMP_EXCLUDE and (prog < rampStartPct or prog > rampEndPct)
+            scanPoints[#scanPoints + 1] = { x = wx, z = wz, fillH = fillH, isRamp = isRamp }
+            if not isRamp then
+                sum = sum + fillH
+                count = count + 1
+                heights[#heights + 1] = fillH
+            end
         end
     end
 
-    local densityH = math.max(
-        siloAssistSiloDetector.densityFillHeightAtBlade or 0,
-        siloAssistSiloDetector.densityFillHeightAtVehicle or 0)
-    local offsetBase = math.max(fillHeight, densityH)
-    local autoOffset = offsetBase * config.AUTO_FILL_OFFSET_FACTOR
-    local effectiveOffset = math.max(heightOffset + autoOffset, config.MIN_HEIGHT_ABOVE_FILL)
+    if count > 0 then
+        table.sort(heights)
+        local avg = sum / count
+        local median = heights[math.ceil(#heights / 2)]
+        local minH = heights[1]
+        local maxH = heights[#heights]
 
-    -- Exit ramp: freeze height at start-of-ramp value. Tilt does the emptying.
-    if siloAssistHeightController.exitRampActive
-        and siloAssistHeightController.exitRampStartHeight ~= nil then
-        return siloAssistHeightController.exitRampStartHeight
+        siloAssistHeightController.pushScanAvgHeight = avg
+        siloAssistHeightController.pushScanMedianHeight = median
+        siloAssistHeightController.pushScanMinHeight = minH
+        siloAssistHeightController.pushScanMaxHeight = maxH
+        siloAssistHeightController.pushScanCount = count
+        siloAssistHeightController.pushScanDone = true
+        siloAssistHeightController.pushNeedRescan = false
+        siloAssistHeightController.pushScanPoints = scanPoints
+        siloAssistDebug.log("Height", string.format(
+            "scanFullSilo: avg=%.3f med=%.3f min=%.3f max=%.3f count=%d step=%.2f len=%.1f wid=%.1f rampPct=[%.2f..%.2f]",
+            avg, median, minH, maxH, count, actualStep,
+            siloLength, siloWidth, rampStartPct, rampEndPct))
+    else
+        siloAssistDebug.log("Height", "scanFullSilo: no samples collected (ramp zones cover entire silo?)")
     end
-
-    local siloLength = math.max(siloAssistSiloDetector.siloLength or 1, 1)
-    local rampEnd = math.max(1 - math.min(config.EXIT_RAMP_METERS / siloLength, 0.5), 0.5)
-
-    local wedgeTarget = fillHeight + (1.0 - progress) * currentWedgeHeight + effectiveOffset
-
-    return wedgeTarget
-end
-
-function siloAssistHeightController.updateWedgePass(progress)
-    local atEnd = progress >= 0.95
-    local nowGoingBackward = progress < siloAssistHeightController.lastProgress
-
-    if siloAssistHeightController.wasAtSiloEnd and nowGoingBackward then
-        siloAssistHeightController.wedgePassCount = siloAssistHeightController.wedgePassCount + 1
-        siloAssistHeightController.wasAtSiloEnd = false
-    end
-
-    if atEnd then
-        siloAssistHeightController.wasAtSiloEnd = true
-    end
-
-    siloAssistHeightController.lastProgress = progress
 end
 
 ---------------------------------------------------------------------
 -- Surface-aware sampling: measure fill height ahead of blade.
--- S1-S5 center points have been REMOVED — only CL1-5 + CR1-5 (left/right
--- blade edge points) are sampled now, using FIXED distances {1,3,5,8,10}m.
--- The result is the MEDIAN of all 10 measured fill heights (more robust
--- against the silage hill that builds up directly in front of the blade,
--- which would skew the 1m point high).
--- For compatibility with consumers expecting surfaceSamples, we keep the
--- arrays but surfaceSamples/surfaceSampleHeights are now empty (no center
--- points); all data lives in collisionSamples/collisionSampleHeights.
+-- 16-sensor array:
+--   10 outer sensors (L+R) at distances {1,3,5,8,10}m, lateral offset halfW+1m
+--    5 center sensors at distances {1,3,5,8,10}m, lateral 0 (between L and R)
+--    1 silo sensor at 15m, center (separate from longRange)
+-- All 15 height sensors (excluding silo sensor) feed into the median.
+-- For compatibility, collisionSampleHeights stores per-distance:
+--   leftFill, rightFill, midFill, distance
 ---------------------------------------------------------------------
 function siloAssistHeightController.sampleSurfaceAhead(vehicle)
     local bladeNode = siloAssistToolDetection.bladeNode
@@ -448,6 +525,7 @@ function siloAssistHeightController.sampleSurfaceAhead(vehicle)
         siloAssistDebug.log("Height", string.format("bladeHalfWidth=%.2f", siloAssistHeightController._bladeHalfWidth))
     end
     local halfW = siloAssistHeightController._bladeHalfWidth or 1.0
+    local outerOffset = halfW + 1.0  -- L/R sensors 1m further out
 
     local vx, vy, vz = getWorldTranslation(vehicle.rootNode)
 
@@ -474,79 +552,102 @@ function siloAssistHeightController.sampleSurfaceAhead(vehicle)
         perpZ = perpZ / perpLen
     end
 
-    siloAssistDebug.logThrottled("Height", "surface_entry", "isFrontAttached=" .. tostring(siloAssistToolDetection.isFrontAttached) .. " pushDir=" .. pushDir .. " bladeNode=" .. string.format("%.1f,%.1f,%.1f", bx, by, bz))
+    siloAssistDebug.logThrottled("Height", "surface_entry", string.format(
+        "isFront=%s pushDir=%d bladePos=(%.1f,%.1f,%.1f) fwdDir=(%.3f,%.3f) vehPos=(%.1f,%.1f,%.1f) sensor1m=(%.1f,%.1f)",
+        tostring(siloAssistToolDetection.isFrontAttached), pushDir,
+        bx, by, bz, fdx, fdz, vx, vy, vz,
+        bx + fdx * pushDir * 1.0, bz + fdz * pushDir * 1.0))
 
-    -- Fixed distances (meters). No speed scaling — TopoMap provides the
-    -- strategic view; these points feed TopoMap and analyzeSurfaceProfile.
+    -- Fixed distances (meters). No speed scaling.
     local distances = {1.0, 3.0, 5.0, 8.0, 10.0}
 
-    -- S1-S5 center points are no longer sampled. Arrays kept empty for
-    -- compatibility with HUD/debug consumers that iterate them safely.
     siloAssistHeightController.surfaceSamples = {}
     siloAssistHeightController.surfaceSampleHeights = {}
     siloAssistHeightController.collisionSamples = {}
     siloAssistHeightController.collisionSampleHeights = {}
 
-    -- Collect all fill heights from CL+CR for median computation
+    -- Collect all fill heights from 15 sensors (10 L/R + 5 mid) for median
     local allFills = {}
 
     for i, d in ipairs(distances) do
         local sx = bx + fdx * pushDir * d
         local sz = bz + fdz * pushDir * d
 
-        -- CL/CR: left and right blade edge points (sampled via DensityMapHeightUtil)
-        local lx = sx - perpX * halfW
-        local lz = sz - perpZ * halfW
-        local rx = sx + perpX * halfW
-        local rz = sz + perpZ * halfW
+        -- Outer L/R: 1m further out than blade half-width
+        local lx = sx - perpX * outerOffset
+        local lz = sz - perpZ * outerOffset
+        local rx = sx + perpX * outerOffset
+        local rz = sz + perpZ * outerOffset
+        -- Center: lateral 0
+        local mx = sx
+        local mz = sz
 
         local lSurfaceY, lFillAbove = DensityMapHeightUtil.getHeightAtWorldPos(lx, by, lz)
         local rSurfaceY, rFillAbove = DensityMapHeightUtil.getHeightAtWorldPos(rx, by, rz)
+        local mSurfaceY, mFillAbove = DensityMapHeightUtil.getHeightAtWorldPos(mx, by, mz)
         local lFill = math.max(lFillAbove or 0, 0)
         local rFill = math.max(rFillAbove or 0, 0)
+        local mFill = math.max(mFillAbove or 0, 0)
 
         table.insert(siloAssistHeightController.collisionSamples, {
             left = {lx, by, lz},
-            right = {rx, by, rz}
+            right = {rx, by, rz},
+            mid = {mx, by, mz},
         })
         table.insert(siloAssistHeightController.collisionSampleHeights, {
             left = lSurfaceY,
             right = rSurfaceY,
+            mid = mSurfaceY,
             leftFill = lFill,
             rightFill = rFill,
-            distance = d,  -- stored for TopoMap Berg-filter (1m excluded)
+            midFill = mFill,
+            distance = d,
         })
 
-        -- Collect for median (all 10 points: 5 left + 5 right)
-        table.insert(allFills, lFill)
-        table.insert(allFills, rFill)
+        -- Collect for median: only 9 farthest sensors (distances 5,8,10 = indices 3,4,5)
+        -- Exclude the 6 nearest (distances 1,3 = indices 1,2) — they're skewed by
+        -- the silage hill building up directly in front of the blade.
+        if i >= 3 then
+            table.insert(allFills, lFill)
+            table.insert(allFills, rFill)
+            table.insert(allFills, mFill)
+        end
 
         siloAssistDebug.logThrottled("Height", string.format("cp%d", i), string.format(
-            "d=%dm L=%.3f R=%.3f lx=%.1f lz=%.1f rx=%.1f rz=%.1f",
-            d, lFill, rFill, lx, lz, rx, rz))
+            "d=%dm L=%.3f M=%.3f R=%.3f lx=%.1f lz=%.1f rx=%.1f rz=%.1f",
+            d, lFill, mFill, rFill, lx, lz, rx, rz))
     end
 
     if #allFills == 0 then
         return nil
     end
 
-    -- Median: sort and take middle element. Robust against outliers
-    -- (e.g. 1m point hitting the silage hill in front of the blade).
+    -- Silo sensor: 15m ahead, center
+    local siloDist = siloAssistConfig.SILO_SENSOR_DIST
+    local ssx = bx + fdx * pushDir * siloDist
+    local ssz = bz + fdz * pushDir * siloDist
+    local _, siloFillAbove = DensityMapHeightUtil.getHeightAtWorldPos(ssx, by, ssz)
+    local siloFillH = math.max(siloFillAbove or 0, 0)
+    siloAssistHeightController.siloSensorFillHeight = siloFillH
+    siloAssistHeightController.siloSensorFillDetected = siloFillH > siloAssistConfig.SILO_SENSOR_FILL_THRESHOLD
+    siloAssistHeightController.siloSensorWorldPos = {ssx, by, ssz}
+
+    -- Median: sort and take middle element
     table.sort(allFills)
     local mid = math.ceil(#allFills / 2)
     local median = allFills[mid]
     siloAssistHeightController.lastSurfaceTarget = median
 
-    local vx2, vy2, vz2 = getWorldTranslation(vehicle.rootNode)
     siloAssistDebug.logThrottled("Height", "surface_summary", string.format(
-        "median=%.3f n=%d bladeY=%.1f vehY=%.1f fwd=%.2f,%.2f,%.2f perpLen=%.2f",
-        median, #allFills, by, vy2, fdx, fdy, fdz, perpLen))
+        "median=%.3f n=%d siloSensor=%.3f(%s) bladeY=%.1f outerOff=%.2f",
+        median, #allFills, siloFillH, tostring(siloAssistHeightController.siloSensorFillDetected),
+        by, outerOffset))
     return median
 end
 
 ---------------------------------------------------------------------
--- Long-range sampling: 15m ahead of vehicle (NOT blade pushDir)
--- Always uses vehicle forward direction (+Z) for entry/exit detection.
+-- Long-range sampling: 15m ahead of blade in push direction.
+-- Uses pushDir to always sample toward the silo.
 ---------------------------------------------------------------------
 function siloAssistHeightController.sampleLongRange(vehicle)
     local bladeNode = siloAssistToolDetection.bladeNode
@@ -560,7 +661,7 @@ function siloAssistHeightController.sampleLongRange(vehicle)
     local bx, by, bz = getWorldTranslation(bladeNode)
     local vx, vy, vz = getWorldTranslation(vehicle.rootNode)
 
-    -- Vehicle forward direction
+    -- Vehicle direction (Z+ = rear in FS25)
     local zx, zy, zz = localToWorld(vehicle.rootNode, 0, 0, 1)
     local fdx = zx - vx
     local fdy = zy - vy
@@ -574,9 +675,10 @@ function siloAssistHeightController.sampleLongRange(vehicle)
     fdx = fdx / fLen
     fdz = fdz / fLen
 
+    local pushDir = siloAssistToolDetection.bladePushDir
     local dist = siloAssistConfig.LONG_RANGE_SAMPLE_DIST
-    local sx = bx + fdx * dist
-    local sz = bz + fdz * dist
+    local sx = bx + fdx * pushDir * dist
+    local sz = bz + fdz * pushDir * dist
 
     local _, fillAbove = DensityMapHeightUtil.getHeightAtWorldPos(sx, by, sz)
     local fillH = math.max(fillAbove or 0, 0)
@@ -588,6 +690,115 @@ function siloAssistHeightController.sampleLongRange(vehicle)
     siloAssistDebug.logThrottled("Height", "longRange", string.format(
         "sx=%.1f sz=%.1f fillH=%.3f detected=%s",
         sx, sz, fillH, tostring(siloAssistHeightController.longRangeFillDetected)))
+end
+
+---------------------------------------------------------------------
+-- Exit sensor: detects when blade is approaching silo exit.
+-- Raycasts at EXIT_DETECT_DISTANCE ahead of blade in push direction.
+-- When fill is no longer detected, exit ramp should start.
+---------------------------------------------------------------------
+function siloAssistHeightController.sampleExitSensor(vehicle)
+    local bladeNode = siloAssistToolDetection.bladeNode
+    if bladeNode == nil or vehicle == nil then
+        siloAssistHeightController.exitSensorFillHeight = nil
+        siloAssistHeightController.exitSensorFillDetected = true
+        siloAssistHeightController.exitSensorWorldPos = nil
+        return
+    end
+
+    local bx, by, bz = getWorldTranslation(bladeNode)
+    local vx, vy, vz = getWorldTranslation(vehicle.rootNode)
+    local vzx, vzy, vzz = localToWorld(vehicle.rootNode, 0, 0, 1)
+    local fdx = vzx - vx
+    local fdy = vzy - vy
+    local fdz = vzz - vz
+    local fLen = MathUtil.vector3Length(fdx, fdy, fdz)
+    if fLen < 0.001 then
+        siloAssistHeightController.exitSensorFillHeight = nil
+        siloAssistHeightController.exitSensorFillDetected = true
+        return
+    end
+    fdx = fdx / fLen
+    fdz = fdz / fLen
+
+    local pushDir = siloAssistToolDetection.bladePushDir
+
+    local dist = siloAssistConfig.EXIT_DETECT_DISTANCE
+    local sx = bx + fdx * pushDir * dist
+    local sz = bz + fdz * pushDir * dist
+
+    local _, fillAbove = DensityMapHeightUtil.getHeightAtWorldPos(sx, by, sz)
+    local fillH = math.max(fillAbove or 0, 0)
+
+    siloAssistHeightController.exitSensorFillHeight = fillH
+    siloAssistHeightController.exitSensorFillDetected = fillH > siloAssistConfig.EXIT_DETECT_FILL_THRESHOLD
+    siloAssistHeightController.exitSensorWorldPos = {sx, by, sz}
+
+    siloAssistDebug.logThrottled("Height", "exitSensor", string.format(
+        "sx=%.1f sz=%.1f fillH=%.3f detected=%s dist=%.1f pushDir=%d",
+        sx, sz, fillH, tostring(siloAssistHeightController.exitSensorFillDetected), dist, pushDir))
+end
+
+---------------------------------------------------------------------
+-- Silo end sensor: checks if a point SILO_END_SENSOR_DIST meters ahead
+-- of the blade is still inside the silo area (parallelogram).
+-- Used for wedge mode to detect silo exit (walls), not fill level.
+---------------------------------------------------------------------
+function siloAssistHeightController.sampleSiloEndSensor(vehicle)
+    local bladeNode = siloAssistToolDetection.bladeNode
+    local silo = siloAssistSiloDetector.currentSilo
+    if bladeNode == nil or vehicle == nil or silo == nil then
+        siloAssistHeightController.siloEndInside = true
+        siloAssistHeightController.siloEndWorldPos = nil
+        return
+    end
+
+    local area = siloAssistSiloDetector.getSiloArea(silo)
+    if area == nil then
+        siloAssistHeightController.siloEndInside = true
+        siloAssistHeightController.siloEndWorldPos = nil
+        return
+    end
+
+    local dhx, dhz, dwx, dwz
+    if area.dhx ~= nil then
+        dhx, dhz = area.dhx, area.dhz
+        dwx, dwz = area.dwx, area.dwz
+    else
+        dhx = area.hx - area.sx
+        dhz = area.hz - area.sz
+        dwx = area.wx - area.sx
+        dwz = area.wz - area.sz
+    end
+
+    local bx, by, bz = getWorldTranslation(bladeNode)
+    local vx, vy, vz = getWorldTranslation(vehicle.rootNode)
+    local vzx, vzy, vzz = localToWorld(vehicle.rootNode, 0, 0, 1)
+    local fdx = vzx - vx
+    local fdy = vzy - vy
+    local fdz = vzz - vz
+    local fLen = MathUtil.vector3Length(fdx, fdy, fdz)
+    if fLen < 0.001 then
+        siloAssistHeightController.siloEndInside = true
+        siloAssistHeightController.siloEndWorldPos = nil
+        return
+    end
+    fdx = fdx / fLen
+    fdz = fdz / fLen
+
+    local pushDir = siloAssistToolDetection.bladePushDir
+    local dist = siloAssistConfig.SILO_END_SENSOR_DIST
+    local sx = bx + fdx * pushDir * dist
+    local sz = bz + fdz * pushDir * dist
+
+    local inside = MathUtil.isPointInParallelogram(sx, sz, area.sx, area.sz, dwx, dwz, dhx, dhz)
+
+    siloAssistHeightController.siloEndInside = inside
+    siloAssistHeightController.siloEndWorldPos = {sx, by, sz}
+
+    siloAssistDebug.logThrottled("Height", "siloEnd", string.format(
+        "sx=%.1f sz=%.1f inside=%s dist=%.1f pushDir=%d",
+        sx, sz, tostring(inside), dist, pushDir))
 end
 
 ---------------------------------------------------------------------
@@ -605,6 +816,8 @@ function siloAssistHeightController.applyEntryExitHeight(vehicle, targetAboveGro
             siloAssistHeightController.applyAttacherJointControl(vehicle, siloAssistToolDetection.toolObject, heightDiff, dt)
         elseif siloAssistToolDetection.controlType == "cylindered" then
             siloAssistHeightController.applyCylinderedControl(vehicle, heightDiff, 5)
+        elseif siloAssistToolDetection.controlType == "attacherJoints" then
+            siloAssistHeightController.applyAttacherJointsControl(vehicle, heightDiff, dt)
         end
     end
 end
@@ -616,63 +829,6 @@ end
 -- along the push direction. The 1m slot catches the silage hill in front
 -- of the blade (intentional — a peak there triggers preemptive lift).
 ---------------------------------------------------------------------
-function siloAssistHeightController.analyzeSurfaceProfile()
-    local ch = siloAssistHeightController.collisionSampleHeights
-    if ch == nil or #ch < 5
-        or ch[1] == nil or ch[5] == nil
-        or ch[1].leftFill == nil or ch[5].rightFill == nil then
-        siloAssistHeightController._profileType = "flat"
-        siloAssistHeightController._preemptiveHeightDiff = 0
-        return
-    end
-
-    -- Build 5-point profile from mean of CL+CR per distance slot
-    local s = {}
-    for i = 1, 5 do
-        local entry = ch[i]
-        if entry == nil or entry.leftFill == nil or entry.rightFill == nil then
-            siloAssistHeightController._profileType = "flat"
-            siloAssistHeightController._preemptiveHeightDiff = 0
-            return
-        end
-        s[i] = (entry.leftFill + entry.rightFill) * 0.5
-    end
-
-    local gradNear = s[2] - s[1]
-    local gradFar = s[5] - s[4]
-    local curvature = s[3] * 2 - s[2] - s[4]
-
-    local profileType = "flat"
-    local preemptive = 0
-
-    if curvature > 0.03 then
-        profileType = "peak"
-        preemptive = -curvature * siloAssistConfig.PROFILE_GAIN
-    elseif curvature < -0.03 then
-        profileType = "void"
-        preemptive = -curvature * siloAssistConfig.PROFILE_GAIN
-    elseif gradNear > 0.05 then
-        profileType = "rising"
-        preemptive = gradNear * siloAssistConfig.PROFILE_GAIN
-    elseif gradNear < -0.05 then
-        profileType = "falling"
-        preemptive = gradNear * siloAssistConfig.PROFILE_GAIN
-    end
-
-    preemptive = math.clamp(preemptive, -0.05, 0.05)
-
-    siloAssistHeightController._profileType = profileType
-    siloAssistHeightController._preemptiveHeightDiff = preemptive
-    siloAssistHeightController._profileCurvature = curvature
-    siloAssistHeightController._profileGradNear = gradNear
-    siloAssistHeightController._profileGradFar = gradFar
-
-    siloAssistDebug.logThrottled("Height", "profile", string.format(
-        "type=%s s=[%.2f,%.2f,%.2f,%.2f,%.2f] gradN=%.3f gradF=%.3f curve=%.3f preempt=%+.4f",
-        profileType, s[1], s[2], s[3], s[4], s[5],
-        gradNear, gradFar, curvature, preemptive))
-end
-
 ---------------------------------------------------------------------
 -- Height application: AttacherJointControl (3-point)
 ---------------------------------------------------------------------
@@ -828,7 +984,69 @@ function siloAssistHeightController.applyCylinderedControl(vehicle, heightDiff, 
 end
 
 ---------------------------------------------------------------------
--- Pre-positioning (before silo entry)
+-- Height application: AttacherJoints direct (3-point without AJC)
+-- Used for compactor tools like HOLARAS Stego that have no
+-- spec_attacherJointControl. Directly sets moveAlpha on the joint.
+---------------------------------------------------------------------
+function siloAssistHeightController.applyAttacherJointsControl(vehicle, heightDiff, dt)
+    local rootVehicle = vehicle.getRootVehicle ~= nil and vehicle:getRootVehicle() or vehicle
+    local toolObject = siloAssistToolDetection.toolObject
+    local jointDescIndex = siloAssistToolDetection.jointDescIndex
+
+    if rootVehicle.spec_attacherJoints == nil or rootVehicle.spec_attacherJoints.attacherJoints == nil then
+        return
+    end
+
+    local config = siloAssistConfig
+    siloAssistHeightController.lastHeightDiff = heightDiff
+
+    local deadband = config.HEIGHT_DEADBAND
+    if siloAssistTopoMap.rows > 0 then
+        local varP = siloAssistTopoMap.lastStats.variancePlateau or 0
+        if varP > config.DYNAMIC_DEADBAND_VAR then
+            deadband = deadband * 2
+        end
+    end
+
+    local direction = 0
+    if heightDiff > deadband then
+        direction = -1
+    elseif heightDiff < -deadband then
+        direction = 1
+    end
+
+    -- Ground guard: don't lower further if almost touching ground
+    if direction == -1 then
+        local bladeDist = siloAssistHeightController.lastRaycastGroundDistance
+        if bladeDist ~= nil and bladeDist < config.BLADE_MIN_GROUND_DIST then
+            direction = 0
+        end
+    end
+
+    siloAssistHeightController.lastAlphaDirection = direction
+
+    for _, joint in ipairs(rootVehicle.spec_attacherJoints.attacherJoints) do
+        if toolObject == nil or joint.moveAttacherJointObject == toolObject then
+            if joint.moveAlpha ~= nil and joint.lowerAlpha ~= nil and joint.upperAlpha ~= nil then
+                local alphaRange = joint.lowerAlpha - joint.upperAlpha
+                local stepSize = config.ALPHA_STEP * alphaRange
+
+                if direction == -1 then
+                    joint.moveAlpha = math.max(joint.moveAlpha - stepSize, joint.upperAlpha)
+                elseif direction == 1 then
+                    joint.moveAlpha = math.min(joint.moveAlpha + stepSize, joint.lowerAlpha)
+                end
+
+                siloAssistDebug.logThrottled("Height", "attJoints", string.format(
+                    "hDiff=%.4f dir=%d moveAlpha=%.4f [%.3f..%.3f]",
+                    heightDiff, direction, joint.moveAlpha,
+                    joint.upperAlpha, joint.lowerAlpha))
+            end
+        end
+    end
+end
+
+---------------------------------------------------------------------
 -- Lowers the blade to near-operating height as the vehicle approaches.
 -- Uses ease-in curve: slow at first, then faster as we get closer.
 ---------------------------------------------------------------------
@@ -865,6 +1083,21 @@ function siloAssistHeightController.applyPreEntry(vehicle, distanceToSilo)
                 Cylindered.actionEventInput(cylVehicle, "", targetInput, siloAssistToolDetection.armToolIndex, true)
             end
         end
+    elseif siloAssistToolDetection.controlType == "attacherJoints" then
+        local rootVehicle = vehicle.getRootVehicle ~= nil and vehicle:getRootVehicle() or vehicle
+        local toolObject = siloAssistToolDetection.toolObject
+        if rootVehicle.spec_attacherJoints ~= nil and rootVehicle.spec_attacherJoints.attacherJoints ~= nil then
+            for _, joint in ipairs(rootVehicle.spec_attacherJoints.attacherJoints) do
+                if toolObject == nil or joint.moveAttacherJointObject == toolObject then
+                    if joint.moveAlpha ~= nil and joint.upperAlpha ~= nil and joint.lowerAlpha ~= nil then
+                        local raisedAlpha = joint.upperAlpha
+                        local loweredAlpha = joint.lowerAlpha
+                        local targetAlpha = raisedAlpha + (loweredAlpha - raisedAlpha) * (1.0 - progress)
+                        joint.moveAlpha = math.clamp(targetAlpha, raisedAlpha, loweredAlpha)
+                    end
+                end
+            end
+        end
     end
 end
 
@@ -886,6 +1119,18 @@ function siloAssistHeightController.raiseBlade(vehicle)
         if siloAssistToolDetection.armToolIndex ~= nil then
             local cylVehicle = siloAssistToolDetection.cylinderedVehicle or vehicle
             Cylindered.actionEventInput(cylVehicle, "", -0.8, siloAssistToolDetection.armToolIndex, true)
+        end
+    elseif siloAssistToolDetection.controlType == "attacherJoints" then
+        local rootVehicle = vehicle.getRootVehicle ~= nil and vehicle:getRootVehicle() or vehicle
+        local toolObject = siloAssistToolDetection.toolObject
+        if rootVehicle.spec_attacherJoints ~= nil and rootVehicle.spec_attacherJoints.attacherJoints ~= nil then
+            for _, joint in ipairs(rootVehicle.spec_attacherJoints.attacherJoints) do
+                if toolObject == nil or joint.moveAttacherJointObject == toolObject then
+                    if joint.moveAlpha ~= nil and joint.upperAlpha ~= nil then
+                        joint.moveAlpha = joint.upperAlpha
+                    end
+                end
+            end
         end
     end
     siloAssistHeightController.lastAlphaDirection = -1
@@ -960,7 +1205,7 @@ end
 ---------------------------------------------------------------------
 -- Main update: calculate target, measure actual, apply correction
 ---------------------------------------------------------------------
-function siloAssistHeightController.update(vehicle, silo, progress, fillHeight, dt)
+function siloAssistHeightController.update(vehicle, silo, progress, entryProgress, fillHeight, dt)
     if vehicle == nil or siloAssistToolDetection.toolType == nil then
         return
     end
@@ -976,89 +1221,11 @@ function siloAssistHeightController.update(vehicle, silo, progress, fillHeight, 
     local vehiclePitch, _ = MathUtil.directionToPitchYaw(zx - vx, zy - vy, zz - vz)
     siloAssistHeightController.vehiclePitchDeg = math.deg(vehiclePitch)
 
-    if siloAssistVehicleState.getSiloMode() == "wedge" then
-        siloAssistHeightController.updateWedgePass(progress)
-    end
-
-    local followFactor = siloAssistVehicleState.getFollowFactor()
-    if followFactor > 0 then
-        -- sampleSurfaceAhead was already called in main.lua update loop.
-        -- Use the cached median (lastSurfaceTarget) instead of re-sampling.
-        local surfaceTarget = siloAssistHeightController.lastSurfaceTarget
-        if surfaceTarget ~= nil then
-            fillHeight = fillHeight * (1 - followFactor) + surfaceTarget * followFactor
-            siloAssistDebug.logThrottled("Height", "surface", string.format(
-                "follow=%.1f surfaceTarget=%.3f blended=%.3f",
-                followFactor, surfaceTarget, fillHeight
-            ))
-        end
-    end
-
-    -- Profile analysis for preemptive adjustment and ramp prediction
-    siloAssistHeightController.analyzeSurfaceProfile()
-    -- Build a 5-point profile from CL+CR means (same as analyzeSurfaceProfile uses)
-    local ch = siloAssistHeightController.collisionSampleHeights
-    local s = {}
-    if ch ~= nil and #ch >= 5 then
-        for i = 1, 5 do
-            if ch[i] ~= nil and ch[i].leftFill ~= nil and ch[i].rightFill ~= nil then
-                s[i] = (ch[i].leftFill + ch[i].rightFill) * 0.5
-            end
-        end
-    end
-    siloAssistHeightController._profileNearFlat = s[1] ~= nil and s[5] ~= nil
-        and (s[3] or 0) < 0.01 and (s[4] or 0) < 0.01 and (s[5] or 0) < 0.01
-    siloAssistHeightController._profileEntering = s[1] ~= nil and s[5] ~= nil
-        and (s[1] or 0) > 0.01 and (s[4] or 0) < 0.01 and (s[5] or 0) < 0.01
-
-    local legacyTarget = siloAssistHeightController.calculateTargetHeight(progress, fillHeight)
-    local targetAboveGround = legacyTarget
-
-    -- TopoMap correction: blend in map-based target deviation.
-    -- gain=0 (default) → no influence, exact legacy behavior.
-    -- In ramp zone, gain is damped by TOPO_MAP_RAMP_DAMPING (0.3) so the
-    -- TopoMap does not fight the legacy entry/exit ramp shape.
-    -- D6: Stuck → TopoMap-Korrektur komplett deaktivieren (verhindert dass
-    --     sie noch tiefer zieht während das Schild feststeckt)
-    local topoGain = siloAssistVehicleState.getTopoGain()
-    if topoGain > 0.001 and siloAssistTopoMap.rows > 0
-        and siloAssistToolDetection.bladeNode ~= nil
-        and not siloAssistState.isStuck then
-        local bx, by, bz = getWorldTranslation(siloAssistToolDetection.bladeNode)
-        local correction, cellInRamp = siloAssistTopoMap.getCorrectionAt(bx, bz)
-        if correction ~= nil then
-            -- D3: Pitch-Schutz — wenn Fahrzeug stark vorne runter geneigt
-            -- (bergab im Silo), keine TopoMap-Absenkung (correction < 0)
-            if siloAssistHeightController.vehiclePitchDeg < siloAssistConfig.PITCH_NO_LOWER_DEG
-                and correction < 0 then
-                correction = 0
-                siloAssistDebug.logThrottled("TopoMap", "pitchGuard",
-                    string.format("pitch=%.1f < %.1f → TopoMap-Absenkung blockiert",
-                        siloAssistHeightController.vehiclePitchDeg,
-                        siloAssistConfig.PITCH_NO_LOWER_DEG))
-            end
-
-            local effectiveGain = topoGain
-            if cellInRamp then
-                effectiveGain = topoGain * siloAssistConfig.TOPO_MAP_RAMP_DAMPING
-            end
-            targetAboveGround = targetAboveGround + correction * effectiveGain
-
-            -- D1: Max-Korrektur-Term — TopoMap darf Legacy-Ziel max um 30cm verschieben
-            local totalCorrection = targetAboveGround - legacyTarget
-            local maxCorr = siloAssistConfig.TOPO_MAX_CORRECTION
-            if math.abs(totalCorrection) > maxCorr then
-                targetAboveGround = legacyTarget + math.clamp(totalCorrection, -maxCorr, maxCorr)
-                siloAssistDebug.logThrottled("TopoMap", "cap",
-                    string.format("corr=%.3f capped to ±%.2f", totalCorrection, maxCorr))
-            end
-
-            siloAssistDebug.logThrottled("TopoMap", "correct", string.format(
-                "gain=%.2f effGain=%.2f corr=%+.3f ramp=%s target=%.3f",
-                topoGain, effectiveGain, correction, tostring(cellInRamp),
-                targetAboveGround))
-        end
-    end
+    -- Target height calculation (dispatches to mode modules: push/smooth/wedge)
+    -- Use entryProgress for wedge mode (entry-oriented), progress for others
+    local mode = siloAssistVehicleState.getSiloMode()
+    local calcProgress = (mode == "wedge") and entryProgress or progress
+    local targetAboveGround = siloAssistHeightController.calculateTargetHeight(calcProgress, fillHeight)
 
     targetAboveGround = math.floor(targetAboveGround * 100 + 0.5) / 100
 
@@ -1113,9 +1280,10 @@ function siloAssistHeightController.update(vehicle, silo, progress, fillHeight, 
     siloAssistHeightController.lastTargetHeightAboveGround = targetAboveGround
 
     siloAssistDebug.logThrottled("Height", "calc", string.format(
-        "mode=%s prog=%.3f fillH=%.3f target=%.3f blade=%.3f vehPitch=%.1f toolPitch=%s speed=%.1f",
+        "mode=%s prog=%.3f entryProg=%.3f fillH=%.3f target=%.3f blade=%.3f vehPitch=%.1f toolPitch=%s speed=%.1f",
         siloAssistVehicleState.getSiloMode(),
         progress,
+        entryProgress,
         fillHeight,
         targetAboveGround,
         bladeAboveGround ~= nil and bladeAboveGround or -1,
@@ -1126,18 +1294,14 @@ function siloAssistHeightController.update(vehicle, silo, progress, fillHeight, 
 
     if bladeAboveGround ~= nil then
         local heightDiff = targetAboveGround - bladeAboveGround
-        local preemptive = siloAssistHeightController._preemptiveHeightDiff or 0
-        if math.abs(preemptive) > 0.001 then
-            heightDiff = heightDiff + preemptive
-            siloAssistDebug.logThrottled("Height", "preempt", string.format(
-                "preempt=%.4f hDiffAfter=%.4f", preemptive, heightDiff))
-        end
 
         if siloAssistToolDetection.controlType == "attacherJointControl" then
             siloAssistHeightController.applyAttacherJointControl(
                 vehicle, siloAssistToolDetection.toolObject, heightDiff, dt)
         elseif siloAssistToolDetection.controlType == "cylindered" then
             siloAssistHeightController.applyCylinderedControl(vehicle, heightDiff, speed)
+        elseif siloAssistToolDetection.controlType == "attacherJoints" then
+            siloAssistHeightController.applyAttacherJointsControl(vehicle, heightDiff, dt)
         end
     else
         local bladeNode = siloAssistToolDetection.bladeNode
@@ -1148,10 +1312,6 @@ function siloAssistHeightController.update(vehicle, silo, progress, fillHeight, 
         local terrainHeight = getTerrainHeightAtWorldPos(g_currentMission.terrainRootNode, vx, 0, vz)
         local bladeH = bladeY - terrainHeight
         local heightDiff = targetAboveGround - bladeH
-        local preemptive = siloAssistHeightController._preemptiveHeightDiff or 0
-        if math.abs(preemptive) > 0.001 then
-            heightDiff = heightDiff + preemptive
-        end
 
         siloAssistDebug.logThrottled("Height", "fallback", string.format(
             "Raycast=nil, using terrain. bladeY=%.3f terrH=%.3f bladeH=%.3f hDiff=%.3f",
@@ -1163,6 +1323,8 @@ function siloAssistHeightController.update(vehicle, silo, progress, fillHeight, 
                 vehicle, siloAssistToolDetection.toolObject, heightDiff, dt)
         elseif siloAssistToolDetection.controlType == "cylindered" then
             siloAssistHeightController.applyCylinderedControl(vehicle, heightDiff, speed)
+        elseif siloAssistToolDetection.controlType == "attacherJoints" then
+            siloAssistHeightController.applyAttacherJointsControl(vehicle, heightDiff, dt)
         end
     end
 end

@@ -406,7 +406,7 @@ function siloAssistModPanel.updateDebugData()
     end
 
     local rampStr = string.format("Einf:%.1fm Ausf:%.1fm",
-        siloAssistConfig.ENTRY_RAMP_METERS, siloAssistConfig.EXIT_RAMP_METERS)
+        siloAssistConfig.ENTRY_RAMP_METERS, siloAssistConfig.EXIT_RAMP_LENGTH)
     if W.dbgRampValue ~= nil then
         ModPanel.setWidgetText(TAB, PD, "dbgRampValue", rampStr)
     end

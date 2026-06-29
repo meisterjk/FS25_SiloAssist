@@ -16,10 +16,10 @@ siloAssistVehicleState.xmlSchema:register(XMLValueType.STRING, "siloAssistVehicl
 siloAssistVehicleState.xmlSchema:register(XMLValueType.STRING, "siloAssistVehicles.vehicle(?)#siloMode", "driveThrough")
 siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#heightOffset", 0.0)
 siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#tiltOffset", 0)
-siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#followFactor", 0.5)
-siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#lookaheadTime", 1.5)
-siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles.vehicle(?)#topoGain", 0.0)
 siloAssistVehicleState.xmlSchema:register(XMLValueType.BOOL, "siloAssistVehicles.vehicle(?)#hudVisible", false)
+siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles#hudX", 0)
+siloAssistVehicleState.xmlSchema:register(XMLValueType.FLOAT, "siloAssistVehicles#hudY", 0)
+siloAssistVehicleState.xmlSchema:register(XMLValueType.BOOL, "siloAssistVehicles.vehicle(?)#compactorEnabled", false)
 
 ---------------------------------------------------------------------
 -- Get a stable key for a vehicle (based on configFileName)
@@ -47,9 +47,7 @@ function siloAssistVehicleState.createDefaultState()
         siloMode = siloAssistConfig.DEFAULT_SILO_MODE,
         heightOffset = siloAssistConfig.DEFAULT_HEIGHT_OFFSET,
         tiltOffset = siloAssistConfig.DEFAULT_TILT_OFFSET,
-        followFactor = siloAssistConfig.FOLLOW_FACTOR,
-        lookaheadTime = siloAssistConfig.LOOKAHEAD_TIME,
-        topoGain = siloAssistConfig.TOPO_MAP_CORRECTION_GAIN,
+        compactorEnabled = siloAssistConfig.DEFAULT_COMPACTOR_ENABLED,
     }
 end
 
@@ -172,40 +170,6 @@ function siloAssistVehicleState.getTiltOffset()
     return siloAssistConfig.DEFAULT_TILT_OFFSET
 end
 
-function siloAssistVehicleState.getFollowFactor()
-    if siloAssistVehicleState.currentState ~= nil then
-        return siloAssistVehicleState.currentState.followFactor
-    end
-    return siloAssistConfig.FOLLOW_FACTOR
-end
-
-function siloAssistVehicleState.setFollowFactor(factor)
-    if siloAssistVehicleState.currentState ~= nil then
-        siloAssistVehicleState.currentState.followFactor = math.clamp(
-            factor,
-            siloAssistConfig.FOLLOW_MIN,
-            siloAssistConfig.FOLLOW_MAX
-        )
-    end
-end
-
-function siloAssistVehicleState.getLookaheadTime()
-    if siloAssistVehicleState.currentState ~= nil then
-        return siloAssistVehicleState.currentState.lookaheadTime
-    end
-    return siloAssistConfig.LOOKAHEAD_TIME
-end
-
-function siloAssistVehicleState.setLookaheadTime(time)
-    if siloAssistVehicleState.currentState ~= nil then
-        siloAssistVehicleState.currentState.lookaheadTime = math.clamp(
-            time,
-            siloAssistConfig.LOOKAHEAD_MIN,
-            siloAssistConfig.LOOKAHEAD_MAX
-        )
-    end
-end
-
 function siloAssistVehicleState.setTiltOffset(offset)
     if siloAssistVehicleState.currentState ~= nil then
         siloAssistVehicleState.currentState.tiltOffset = math.clamp(
@@ -216,17 +180,16 @@ function siloAssistVehicleState.setTiltOffset(offset)
     end
 end
 
-function siloAssistVehicleState.getTopoGain()
+function siloAssistVehicleState.isCompactorEnabled()
     if siloAssistVehicleState.currentState ~= nil then
-        return siloAssistVehicleState.currentState.topoGain
+        return siloAssistVehicleState.currentState.compactorEnabled
     end
-    return siloAssistConfig.TOPO_MAP_CORRECTION_GAIN
+    return siloAssistConfig.DEFAULT_COMPACTOR_ENABLED
 end
 
-function siloAssistVehicleState.setTopoGain(gain)
+function siloAssistVehicleState.setCompactorEnabled(enabled)
     if siloAssistVehicleState.currentState ~= nil then
-        siloAssistVehicleState.currentState.topoGain = math.clamp(
-            gain, 0, siloAssistConfig.TOPO_MAP_CORRECTION_MAX)
+        siloAssistVehicleState.currentState.compactorEnabled = enabled
     end
 end
 
@@ -239,6 +202,10 @@ function siloAssistVehicleState.resetRuntimeState()
     siloAssistState.isReversing = false
     siloAssistState.wasReversing = false
     siloAssistState.wasInSilo = false
+    siloAssistState.wheelSlipDetected = false
+    siloAssistState.stuckRaiseTimer = 0
+    siloAssistState.stuckHeightAdd = 0
+    siloAssistState.stuckReleaseTimer = 0
 end
 
 ---------------------------------------------------------------------
@@ -277,11 +244,14 @@ function siloAssistVehicleState.saveToXML()
         xmlFile:setString(vKey .. "#siloMode", state.siloMode or siloAssistConfig.DEFAULT_SILO_MODE)
         xmlFile:setFloat(vKey .. "#heightOffset", state.heightOffset or siloAssistConfig.DEFAULT_HEIGHT_OFFSET)
         xmlFile:setFloat(vKey .. "#tiltOffset", state.tiltOffset or siloAssistConfig.DEFAULT_TILT_OFFSET)
-        xmlFile:setFloat(vKey .. "#followFactor", state.followFactor or siloAssistConfig.FOLLOW_FACTOR)
-        xmlFile:setFloat(vKey .. "#lookaheadTime", state.lookaheadTime or siloAssistConfig.LOOKAHEAD_TIME)
-        xmlFile:setFloat(vKey .. "#topoGain", state.topoGain or siloAssistConfig.TOPO_MAP_CORRECTION_GAIN)
         xmlFile:setBool(vKey .. "#hudVisible", state.hudVisible or false)
+        xmlFile:setBool(vKey .. "#compactorEnabled", state.compactorEnabled or false)
         i = i + 1
+    end
+
+    if siloAssistHud ~= nil and siloAssistHud.x ~= nil and siloAssistHud.y ~= nil then
+        xmlFile:setFloat("siloAssistVehicles#hudX", siloAssistHud.x)
+        xmlFile:setFloat("siloAssistVehicles#hudY", siloAssistHud.y)
     end
 
     xmlFile:save()
@@ -318,12 +288,14 @@ function siloAssistVehicleState.loadFromXML()
 
         local configFile = xmlFile:getString(vKey .. "#configFile") or ""
         local siloMode = xmlFile:getString(vKey .. "#siloMode") or siloAssistConfig.DEFAULT_SILO_MODE
+        -- Migrate old "driveThrough" mode to "push"
+        if siloMode == "driveThrough" then
+            siloMode = "push"
+        end
         local heightOffset = xmlFile:getFloat(vKey .. "#heightOffset") or siloAssistConfig.DEFAULT_HEIGHT_OFFSET
         local tiltOffset = xmlFile:getFloat(vKey .. "#tiltOffset") or siloAssistConfig.DEFAULT_TILT_OFFSET
-        local followFactor = xmlFile:getFloat(vKey .. "#followFactor") or siloAssistConfig.FOLLOW_FACTOR
-        local lookaheadTime = xmlFile:getFloat(vKey .. "#lookaheadTime") or siloAssistConfig.LOOKAHEAD_TIME
-        local topoGain = xmlFile:getFloat(vKey .. "#topoGain") or siloAssistConfig.TOPO_MAP_CORRECTION_GAIN
         local hudVisible = xmlFile:getBool(vKey .. "#hudVisible") or false
+        local compactorEnabled = xmlFile:getBool(vKey .. "#compactorEnabled") or siloAssistConfig.DEFAULT_COMPACTOR_ENABLED
 
         if configFile ~= "" then
             local normalizedKey = string.lower(configFile)
@@ -333,16 +305,16 @@ function siloAssistVehicleState.loadFromXML()
             state.siloMode = siloMode
             state.heightOffset = heightOffset
             state.tiltOffset = tiltOffset
-            state.followFactor = followFactor
-            state.lookaheadTime = lookaheadTime
-            state.topoGain = topoGain
             state.hudVisible = hudVisible
+            state.compactorEnabled = compactorEnabled
             state.state = siloAssistConfig.STATE_OFF
             siloAssistVehicleState.vehicleStates[normalizedKey] = state
         end
 
         i = i + 1
     end
+
+    siloAssistHud.loadFromXML(xmlFile, "siloAssistVehicles")
 
     xmlFile:delete()
 end

@@ -18,8 +18,13 @@ siloAssistState.stuckTimer = 0
 siloAssistState.isReversing = false
 siloAssistState.wasReversing = false
 siloAssistState.wasInSilo = false
+siloAssistState.wheelSlipDetected = false
+siloAssistState.stuckRaiseTimer = 0
+siloAssistState.stuckHeightAdd = 0
+siloAssistState.stuckReleaseTimer = 0
 
 siloAssist.SCRIPT_FILES = {
+    "scripts/core/siloAssistEquipmentConfig.lua",
     "scripts/core/siloAssistConfig.lua",
     "scripts/core/siloAssistDebug.lua",
     "scripts/core/siloAssistVehicleState.lua",
@@ -27,6 +32,7 @@ siloAssist.SCRIPT_FILES = {
     "scripts/core/siloAssistTopoMap.lua",
     "scripts/core/siloAssistSiloDetector.lua",
     "scripts/controller/siloAssistTiltController.lua",
+    "scripts/controller/siloAssistCompactorController.lua",
     "scripts/hooks/siloAssistHeightController.lua",
     "scripts/hooks/siloAssistDumpController.lua",
     "scripts/hud/siloAssistDrawing.lua",
@@ -40,6 +46,8 @@ siloAssist.SCRIPT_FILES = {
 function siloAssist:loadMap()
     siloAssistVehicleState.resetAll()
     siloAssist.lastToggleTime = 0
+
+    siloAssistEquipmentConfig.loadFromModDesc()
 
     siloAssist:installPlayerInputHook()
     siloAssistHeightController.installHooks()
@@ -69,6 +77,7 @@ function siloAssist:deleteMap()
     removeConsoleCommand("reloadSiloAssist")
     removeConsoleCommand("siloAssistDebug")
     siloAssistVehicleState.resetAll()
+    siloAssistEquipmentConfig.reset()
 
     siloAssistModPanel.deleteMap()
 end
@@ -88,28 +97,53 @@ end
 function siloAssist.checkStuck(vehicle, dt)
     if vehicle == nil or not vehicle:getIsMotorStarted() then
         siloAssistState.stuckTimer = 0
+        siloAssistState.stuckReleaseTimer = 0
         siloAssistState.isStuck = false
+        siloAssistState.wheelSlipDetected = false
         return false
     end
 
     local speed = vehicle:getLastSpeed()
     local shouldRaiseBlade = (siloAssistToolDetection.isFrontAttached == siloAssistState.isReversing)
 
-    if speed < siloAssistConfig.STUCK_SPEED_THRESHOLD and not shouldRaiseBlade then
+    -- WheelSlip detection: count wheels with slipRatio > 0.5
+    local slipCount = 0
+    local totalWheels = 0
+    local specWheels = vehicle.spec_wheels
+    if specWheels ~= nil and specWheels.wheels ~= nil then
+        for _, wheel in ipairs(specWheels.wheels) do
+            totalWheels = totalWheels + 1
+            if wheel.slipRatio ~= nil and math.abs(wheel.slipRatio) > siloAssistConfig.STUCK_WHEELSLIP_RATIO then
+                slipCount = slipCount + 1
+            end
+        end
+    end
+    siloAssistState.wheelSlipDetected = slipCount >= siloAssistConfig.STUCK_MIN_WHEELS
+
+    -- Stuck condition: speed < 3 km/h AND >= MIN_WHEELS wheels slipping for 0.3s while pushing
+    local isSlow = speed < siloAssistConfig.STUCK_SPEED_THRESHOLD
+    if isSlow and siloAssistState.wheelSlipDetected and not shouldRaiseBlade then
         siloAssistState.stuckTimer = siloAssistState.stuckTimer + dt
+        siloAssistState.stuckReleaseTimer = 0
         if siloAssistState.stuckTimer >= siloAssistConfig.STUCK_TIME_THRESHOLD * 1000 then
             if not siloAssistState.isStuck then
-                siloAssistDebug.log("Stuck", string.format("STUCK detected: speed=%.1f timer=%dms", speed, siloAssistState.stuckTimer))
+                siloAssistDebug.log("Stuck", string.format(
+                    "STUCK detected: %d/%d wheels slipping timer=%.0fms",
+                    slipCount, totalWheels, siloAssistState.stuckTimer))
             end
             siloAssistState.isStuck = true
             return true
         end
     else
-        if siloAssistState.isStuck then
-            siloAssistDebug.log("Stuck", string.format("Unstuck: speed=%.1f", speed))
-        end
         siloAssistState.stuckTimer = 0
-        siloAssistState.isStuck = false
+        if siloAssistState.isStuck then
+            siloAssistState.stuckReleaseTimer = siloAssistState.stuckReleaseTimer + dt
+            if siloAssistState.stuckReleaseTimer >= siloAssistConfig.STUCK_RELEASE_MS then
+                siloAssistDebug.log("Stuck", "Unstuck: wheelSlip cleared")
+                siloAssistState.isStuck = false
+                siloAssistState.stuckReleaseTimer = 0
+            end
+        end
     end
 
     return false
@@ -130,6 +164,9 @@ function siloAssist:update(dt)
         if siloAssistVehicleState.currentState ~= nil then
             siloAssistState.isStuck = false
             siloAssistState.stuckTimer = 0
+            siloAssistState.stuckRaiseTimer = 0
+            siloAssistState.stuckHeightAdd = 0
+            siloAssistState.stuckReleaseTimer = 0
             siloAssistState.isReversing = false
             siloAssistState.wasReversing = false
             siloAssistState.wasInSilo = false
@@ -137,6 +174,7 @@ function siloAssist:update(dt)
             siloAssistToolDetection.reset()
             siloAssistHeightController.reset()
             siloAssistTiltController.reset()
+            siloAssistCompactorController.reset()
             siloAssistDumpController.reset()
             siloAssistTopoMap.reset()
             siloAssist._topoRetriggerTimer = nil
@@ -177,20 +215,37 @@ function siloAssist:update(dt)
     local justStoppedReversing = not siloAssistState.isReversing and siloAssistState.wasReversing
     siloAssistState.wasReversing = siloAssistState.isReversing
 
+    -- Push mode: trigger full silo rescan on direction change (rev>3km/h -> fwd>3km/h)
+    if siloAssistVehicleState.getSiloMode() == "push" and justStoppedReversing then
+        local speed = vehicle:getLastSpeed()
+        if speed > 3.0 then
+            siloAssistHeightController.pushNeedRescan = true
+            siloAssistDebug.log("Main", "push: rescan triggered (rev->fwd, speed=" .. string.format("%.1f", speed) .. ")")
+        end
+    end
+
     siloAssist.checkStuck(vehicle, dt)
 
     siloAssistDebug.logThrottled("Main", "state", string.format(
-        "state=%s rev=%s stuck=%s speed=%.1f",
+        "state=%s rev=%s stuck=%s slip=%s speed=%.1f raiseTimer=%d",
         state,
         tostring(siloAssistState.isReversing),
         tostring(siloAssistState.isStuck),
-        vehicle:getLastSpeed()
+        tostring(siloAssistState.wheelSlipDetected),
+        vehicle:getLastSpeed(),
+        siloAssistState.stuckRaiseTimer
     ))
 
     siloAssistSiloDetector.update(vehicle, dt)
 
     -- Long-range sampling (always, no speed check)
     siloAssistHeightController.sampleLongRange(vehicle)
+
+    -- Exit sensor: detects when blade approaches silo exit
+    siloAssistHeightController.sampleExitSensor(vehicle)
+
+    -- Silo end sensor: checks if point ahead is still inside silo area (walls)
+    siloAssistHeightController.sampleSiloEndSensor(vehicle)
 
     -- Surface sampling (always, before early-return blocks like exit ramp)
     siloAssistHeightController.sampleSurfaceAhead(vehicle)
@@ -217,7 +272,7 @@ function siloAssist:update(dt)
             local offset = siloAssistVehicleState.getHeightOffset()
             local opts = { offset = offset }
             if mode == "wedge" then
-                opts.wedgeHeight = siloAssistConfig.WEDGE_HEIGHT_M
+                opts.wedgeHeight = siloAssistConfig.WEDGE_MIN_END_HEIGHT
             end
             siloAssistTopoMap.computeTargetTopography(mode, opts)
             siloAssist._topoLastCoverage = coverage
@@ -232,62 +287,65 @@ function siloAssist:update(dt)
         siloAssistHeightController.lastRaycastGroundDistance = bladeGroundDist
     end
 
-    -- Entry/exit tilt control (before normal tilt update)
     local inSilo = siloAssistSiloDetector.isInSilo
     local fillAhead = siloAssistHeightController.longRangeFillDetected
     local exitRampActive = siloAssistHeightController.exitRampActive
-
-    local siloProgress = siloAssistSiloDetector.progress or 0
-    local siloLength = math.max(siloAssistSiloDetector.siloLength or 1, 1)
+    local exitFillDetected = siloAssistHeightController.exitSensorFillDetected
+    local siloEndInside = siloAssistHeightController.siloEndInside
+    local mode = siloAssistVehicleState.getSiloMode()
     local config = siloAssistConfig
-    local rampEnd = math.max(1 - math.min(config.EXIT_RAMP_METERS / siloLength, 0.5), 0.5)
 
-    -- Exit ramp length (meters), capped to EXIT_RAMP_METERS_MAX as safety
-    local exitRampMeters = math.min(
-        config.EXIT_RAMP_METERS,
-        config.EXIT_RAMP_METERS_MAX or config.EXIT_RAMP_METERS)
+    -- Exit ramp trigger: start when silo end sensor detects point outside silo area
+    -- All modes use the silo wall sensor (not fill level) for reliable exit detection
+    local exitTrigger = not siloEndInside
 
-    if exitRampActive or (inSilo and not fillAhead and siloProgress > rampEnd) then
+    -- Exit ramp: stepped height offset + tilt increase.
+    -- Steps at 0m (+10cm, 10° tilt), 2m (+20cm, 20° tilt), 4m (+30cm, 30° tilt).
+    -- Wedge mode uses base tilt (5°) instead of stepped tilt.
+    -- Normal height controller runs throughout — only offset is added.
+    if exitRampActive or (inSilo and exitTrigger) then
         if not exitRampActive then
             local hc = siloAssistHeightController
-            -- Snapshot: freeze blade height at start of ramp.
-            -- Prefer last computed target, fall back to measured blade distance.
-            local startH = hc.lastTargetHeightAboveGround
-            if startH == nil then
-                startH = hc.lastRaycastGroundDistance or 0
-            end
             hc.exitRampActive = true
             hc.exitRampProgress = 0
-            hc.exitRampStartHeight = startH
-            hc.exitRampEffectiveMeters = exitRampMeters
             siloAssistDebug.log("Main", string.format(
-                "Exit ramp START: prog=%.3f frozenHeight=%.3fm rampLen=%.1fm",
-                siloProgress, startH, exitRampMeters))
+                "Exit ramp START: exitFill=%s siloEnd=%s mode=%s",
+                tostring(exitFillDetected), tostring(siloEndInside), mode))
         end
         local hc = siloAssistHeightController
         local speedMs = math.max(vehicle:getLastSpeed() / 3.6, 0.1)
         hc.exitRampProgress = hc.exitRampProgress + speedMs * dt / 1000
-        local rampLen = hc.exitRampEffectiveMeters or exitRampMeters
-        local rampProg = math.min(hc.exitRampProgress / rampLen, 1)
-        local exitTiltDeg = config.SHIELD_TILT_DEG + (config.EXIT_RAMP_TILT_MAX_DEG - config.SHIELD_TILT_DEG) * rampProg
-        siloAssistTiltController.forceTilt(vehicle, exitTiltDeg)
-        siloAssistDebug.logThrottled("Main", "exitRampTilt", string.format(
-            "prog=%.3f tilt=%.1f° frozenH=%.3f", rampProg, exitTiltDeg,
-            hc.exitRampStartHeight or -1))
+
+        -- Determine current step based on distance traveled
+        local steps = config.EXIT_RAMP_STEPS
+        local heightAdd = 0
+        local tiltDeg = siloAssistTiltController.getBaseTiltDeg()
+        for i = #steps, 1, -1 do
+            if hc.exitRampProgress >= steps[i].dist then
+                heightAdd = steps[i].heightAdd
+                tiltDeg = steps[i].tiltDeg
+                break
+            end
+        end
+        hc.exitRampHeightAdd = heightAdd
+        siloAssistTiltController.forceTilt(vehicle, tiltDeg)
+
+        siloAssistDebug.logThrottled("Main", "exitRamp", string.format(
+            "prog=%.2fm heightAdd=+%.2fm tilt=%.0f° mode=%s ctrl=%s",
+            hc.exitRampProgress, heightAdd, tiltDeg,
+            mode, tostring(siloAssistToolDetection.controlType)))
     elseif not inSilo and fillAhead then
         siloAssistTiltController.forceTilt(vehicle, 0)
         if siloAssistHeightController.exitRampActive then
             siloAssistHeightController.exitRampActive = false
             siloAssistHeightController.exitRampProgress = 0
-            siloAssistHeightController.exitRampStartHeight = nil
-            siloAssistHeightController.exitRampEffectiveMeters = nil
+            siloAssistHeightController.exitRampHeightAdd = 0
         end
     else
         if siloAssistHeightController.exitRampActive then
             siloAssistHeightController.exitRampActive = false
             siloAssistHeightController.exitRampProgress = 0
-            siloAssistHeightController.exitRampStartHeight = nil
-            siloAssistHeightController.exitRampEffectiveMeters = nil
+            siloAssistHeightController.exitRampHeightAdd = 0
         end
         if siloAssistTiltController.forceTiltActive then
             siloAssistTiltController.clearForceTilt()
@@ -305,13 +363,18 @@ function siloAssist:update(dt)
 
     local justLeftSilo = siloAssistState.wasInSilo and not siloAssistSiloDetector.isInSilo
 
+    -- Compactor controller runs BEFORE shouldRaiseBlade so it stays lowered
+    -- inside the silo even when the blade raises on reverse.
+    if siloAssistToolDetection.compactorTool ~= nil then
+        siloAssistCompactorController.update(vehicle)
+    end
+
     local shouldRaiseBlade = (siloAssistToolDetection.isFrontAttached == siloAssistState.isReversing)
     if shouldRaiseBlade and siloAssistToolDetection.toolType ~= "shovel" then
         if siloAssistHeightController.exitRampActive then
             siloAssistHeightController.exitRampActive = false
             siloAssistHeightController.exitRampProgress = 0
-            siloAssistHeightController.exitRampStartHeight = nil
-            siloAssistHeightController.exitRampEffectiveMeters = nil
+            siloAssistHeightController.exitRampHeightAdd = 0
         end
         if siloAssistTiltController.forceTiltActive then
             siloAssistTiltController.clearForceTilt()
@@ -382,13 +445,25 @@ function siloAssist:update(dt)
 
     siloAssistState.wasInSilo = true
 
+    -- Compactor-only mode: skip height/tilt/surface/exit-ramp
+    -- (when primary tool IS the compactor — backward compat for compactor-only vehicles)
+    if siloAssistToolDetection.toolType == "compactor" then
+        siloAssistHud:updateStatusText(dt)
+        return
+    end
+
     if state == siloAssistConfig.STATE_WAITING then
         siloAssistVehicleState.setState(siloAssistConfig.STATE_ACTIVE)
         siloAssistDebug.log("Main", "Entered silo -> ACTIVE")
+        -- Push mode: initial full silo scan on entry
+        if siloAssistVehicleState.getSiloMode() == "push" and silo ~= nil then
+            siloAssistHeightController.scanFullSilo(silo, siloAssistSiloDetector.currentSiloArea)
+        end
     end
 
     local silo = siloAssistSiloDetector.currentSilo
     local progress = siloAssistSiloDetector.progress
+    local entryProgress = siloAssistSiloDetector.entryProgress
 
     if siloAssistToolDetection.toolType == "shovel" and siloAssistState.isReversing then
         siloAssistVehicleState.setState(siloAssistConfig.STATE_DUMPING)
@@ -399,22 +474,23 @@ function siloAssist:update(dt)
     end
 
     if siloAssistState.isStuck then
-        siloAssistVehicleState.setState(siloAssistConfig.STATE_RAISING)
-        if siloAssistToolDetection.controlType == "attacherJointControl" then
-            local spec = siloAssistToolDetection.toolObject.spec_attacherJointControl
-            if spec ~= nil and spec.jointDesc ~= nil then
-                spec.heightTargetAlpha = spec.jointDesc.upperAlpha
-                spec.heightController.moveAlphaLastManual = spec.jointDesc.upperAlpha
-            end
-        elseif siloAssistToolDetection.controlType == "cylindered" then
-            Cylindered.actionEventInput(
-                siloAssistToolDetection.cylinderedVehicle or vehicle, "",
-                -1.0, siloAssistToolDetection.armToolIndex, true)
+        if state ~= siloAssistConfig.STATE_RAISING then
+            siloAssistVehicleState.setState(siloAssistConfig.STATE_RAISING)
+            siloAssistState.stuckRaiseTimer = 0
+            siloAssistState.stuckHeightAdd = config.STUCK_HEIGHT_ADD
+            siloAssistDebug.log("Main", string.format("STUCK -> RAISING: stuckHeightAdd=%.2fm", config.STUCK_HEIGHT_ADD))
         end
-        siloAssistTiltController.fullRetractTilt()
-    elseif state == siloAssistConfig.STATE_RAISING and not siloAssistState.isStuck then
-        siloAssistVehicleState.setState(siloAssistConfig.STATE_ACTIVE)
-        siloAssistDebug.log("Main", "Unstuck -> ACTIVE")
+        siloAssistTiltController.forceTilt(vehicle, siloAssistConfig.TILT_MAX)
+    elseif state == siloAssistConfig.STATE_RAISING then
+        siloAssistState.stuckRaiseTimer = siloAssistState.stuckRaiseTimer + dt
+        local minRaiseTime = siloAssistConfig.STUCK_RAISE_MIN_MS
+        if not siloAssistState.isStuck and siloAssistState.stuckRaiseTimer >= minRaiseTime then
+            siloAssistState.stuckHeightAdd = 0
+            siloAssistVehicleState.setState(siloAssistConfig.STATE_ACTIVE)
+            siloAssistDebug.log("Main", string.format(
+                "Unstuck -> ACTIVE (raiseTimer=%dms >= %dms, stuckHeightAdd=0)",
+                siloAssistState.stuckRaiseTimer, minRaiseTime))
+        end
     end
 
     local fillHeight = siloAssistSiloDetector.stagedFillHeight
@@ -427,7 +503,12 @@ function siloAssist:update(dt)
     local inEntryRamp = progress < rampStart
 
     if speed >= siloAssistConfig.MIN_SPEED_FOR_CONTROL or inEntryRamp then
-        siloAssistHeightController.update(vehicle, silo, progress, fillHeight, dt)
+        -- Push mode: perform rescan if flagged
+        if siloAssistHeightController.pushNeedRescan and silo ~= nil then
+            siloAssistHeightController.scanFullSilo(silo, siloAssistSiloDetector.currentSiloArea)
+        end
+        -- Height controller always runs now — exit ramp adds offset via exitRampHeightAdd
+        siloAssistHeightController.update(vehicle, silo, progress, siloAssistSiloDetector.bladeEntryProgress, fillHeight, dt)
     elseif siloAssistDebug.showDebug then
         siloAssistDebug.logThrottled("Main", "slow", string.format(
             "Speed %.1f < MIN_SPEED %.1f: skipping height control",
@@ -452,9 +533,13 @@ function siloAssist:update(dt)
         return "nn"
     end
     siloAssistDebug.logThrottled("Main", "debugHud", string.format(
-        "CL1=%s CL2=%s CL3=%s CL4=%s CL5=%s | CR1=%s CR2=%s CR3=%s CR4=%s CR5=%s | Med=%s Koll=%s | Vo=%s Hi=%s Nick=%s | Speed=%.1f",
-        cf("leftFill",1), cf("leftFill",2), cf("leftFill",3), cf("leftFill",4), cf("leftFill",5),
-        cf("rightFill",1), cf("rightFill",2), cf("rightFill",3), cf("rightFill",4), cf("rightFill",5),
+        "CL1=%s CM1=%s CR1=%s | CL3=%s CM3=%s CR3=%s | CL5=%s CM5=%s CR5=%s | CL8=%s CM8=%s CR8=%s | CL10=%s CM10=%s CR10=%s | Silo=%s | Med=%s Koll=%s | Vo=%s Hi=%s Nick=%s | Speed=%.1f",
+        cf("leftFill",1), cf("midFill",1), cf("rightFill",1),
+        cf("leftFill",2), cf("midFill",2), cf("rightFill",2),
+        cf("leftFill",3), cf("midFill",3), cf("rightFill",3),
+        cf("leftFill",4), cf("midFill",4), cf("rightFill",4),
+        cf("leftFill",5), cf("midFill",5), cf("rightFill",5),
+        n(hc.siloSensorFillHeight),
         n(hc.lastSurfaceTarget),
         n(hc.lastRaycastGroundDistance),
         n(hc.vehicleFrontGroundHeight), n(hc.vehicleRearGroundHeight),
@@ -476,6 +561,7 @@ function siloAssist:draw()
     if siloAssistDebug.showLines then
         siloAssistHud:drawSurfaceSamples()
         siloAssistHud:drawTopoMap()
+        siloAssistHud:drawPushScan()
     end
 
     if siloAssistDrawing and siloAssistDrawing.draw then
@@ -528,7 +614,7 @@ function siloAssist:activate()
                 local offset = siloAssistVehicleState.getHeightOffset()
                 local opts = { offset = offset }
                 if mode == "wedge" then
-                    opts.wedgeHeight = siloAssistConfig.WEDGE_HEIGHT_M
+                    opts.wedgeHeight = siloAssistConfig.WEDGE_MIN_END_HEIGHT
                 end
                 siloAssistTopoMap.computeTargetTopography(mode, opts)
                 siloAssistDebug.log("Activate", "TopoMap initialized (already in silo)")
@@ -536,6 +622,11 @@ function siloAssist:activate()
         end
         siloAssistDebug.log("Activate", "In silo, entering ACTIVE")
         siloAssistVehicleState.setState(siloAssistConfig.STATE_ACTIVE)
+        -- Push mode: initial full silo scan if already in silo at activation
+        if siloAssistVehicleState.getSiloMode() == "push" then
+            siloAssistHeightController.scanFullSilo(
+                siloAssistSiloDetector.currentSilo, siloAssistSiloDetector.currentSiloArea)
+        end
     else
         -- Nicht im Silo: prüfen ob nah dran, sonst WAITING (LR-Punkt wird in update loop erfasst)
         local isNear, _ = siloAssistSiloDetector.isNearSilo(vehicle, siloAssistConfig.PRE_ENTRY_DISTANCE)
@@ -560,9 +651,16 @@ function siloAssist:deactivate()
         siloAssistHeightController.raiseBlade(vehicle)
         siloAssistTiltController.fullRetractTilt()
     end
+    if vehicle ~= nil and siloAssistToolDetection.compactorTool ~= nil then
+        if siloAssistCompactorController._controlPath == nil and siloAssistToolDetection.compactorControlPath == nil then
+            siloAssistCompactorController.detectControlPath(vehicle)
+        end
+        siloAssistCompactorController.raiseImplement(vehicle)
+    end
     siloAssistVehicleState.setState(siloAssistConfig.STATE_OFF)
     siloAssistHeightController.reset()
     siloAssistTiltController.reset()
+    siloAssistCompactorController.reset()
     siloAssistToolDetection.reset()
     siloAssistDumpController.reset()
     siloAssistSiloDetector.reset()
@@ -608,9 +706,15 @@ function siloAssist:cycleSettings()
         local offset = siloAssistVehicleState.getHeightOffset()
         local opts = { offset = offset }
         if mode == "wedge" then
-            opts.wedgeHeight = siloAssistConfig.WEDGE_HEIGHT_M
+            opts.wedgeHeight = siloAssistConfig.WEDGE_MIN_END_HEIGHT
         end
         siloAssistTopoMap.computeTargetTopography(mode, opts)
+    end
+
+    -- If switching to push mode and in silo, trigger full silo scan
+    if mode == "push" and siloAssistSiloDetector.isInSilo and siloAssistSiloDetector.currentSilo ~= nil then
+        siloAssistHeightController.scanFullSilo(
+            siloAssistSiloDetector.currentSilo, siloAssistSiloDetector.currentSiloArea)
     end
 end
 
@@ -716,6 +820,8 @@ function siloAssist:consoleReloadScripts()
             print("[SiloAssist] WARNING: Script not found: " .. fullPath)
         end
     end
+
+    siloAssistEquipmentConfig.loadFromModDesc()
 
     siloAssistHeightController.installHooks()
     if siloAssistDrawing and siloAssistDrawing.load then
